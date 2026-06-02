@@ -1,0 +1,3 @@
+{
+  "extends": "@learn-broker/config/tsconfig.base.json"
+}
