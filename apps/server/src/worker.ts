@@ -6,9 +6,8 @@ export const worker = new Worker(
   async (job) => {
     await new Promise((res, rej) => {
       setTimeout(() => {
-        console.log(job.queueName);
-        console.log(job.name);
-        console.log(job.data);
+        console.log(job.id);
+
         res("success");
       }, 1200);
     });
