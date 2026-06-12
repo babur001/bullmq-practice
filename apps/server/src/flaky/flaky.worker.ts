@@ -1,16 +1,16 @@
-import { connection } from "@/math/redis-connection";
+import { connection } from "@/connection";
 import { Worker } from "bullmq";
 
-export const worker = new Worker(
-  "math",
+const worker = new Worker(
+  "flaky",
   async (job) => {
-    const { a, b } = job.data;
-
-    if (job.attemptsMade < 2) {
-      throw new Error(`Test babur ${job.attemptsMade}`);
+    if (job.data.alwaysFail) {
+      throw new Error("Test Babur");
     }
 
-    return { sum: a + b };
+    console.log(job.data);
+
+    return { ok: true };
   },
   { connection: connection },
 );

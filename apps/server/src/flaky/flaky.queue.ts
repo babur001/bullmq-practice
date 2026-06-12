@@ -1,10 +1,10 @@
 import { connection } from "@/math/redis-connection";
 import { Queue } from "bullmq";
 
-export const mathQueue = new Queue("math", {
+export const flakyQueue = new Queue("flaky", {
   connection: connection,
   defaultJobOptions: {
-    attempts: 4,
+    attempts: 3,
     backoff: { type: "exponential", delay: 1000 },
   },
 });

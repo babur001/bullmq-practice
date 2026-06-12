@@ -20,8 +20,9 @@ BullMQ asks: *are there retry attempts left?*
 
 - **Yes** → the job goes back to be re-run later (often after a delay). It is **not**
   lost.
-- **No** → the job moves to the **`failed`** state for good, and the `failed` event
-  fires.
+- **No** → the job moves to the **`failed`** state for good (and
+  `QueueEvents`' `failed` / `retries-exhausted` events fire — see the event table
+  in the Walkthrough).
 
 This is the heart of durability you observed in Lesson 01: the broker holds the job
 and keeps trying. A crash mid-job isn't data loss — it's just a failed attempt that
@@ -84,7 +85,7 @@ flowchart TD
     B -- no --> C[completed ✅]
     B -- yes --> D{attempts left?}
     D -- yes --> E[delayed<br/>wait backoff] --> F[waiting] --> A
-    D -- no --> G[failed ❌<br/>failedReason stored<br/>'failed' event fires]
+    D -- no --> G[failed ❌<br/>failedReason stored<br/>QueueEvents 'failed' fires]
 ```
 
 The loop on the left is durability in action. The only way out the bottom (`failed`)
@@ -131,8 +132,22 @@ worker.on("failed", (job, err) =>
   console.log(`❌ ${job?.id} gave up after ${job?.attemptsMade} attempt(s): ${err.message}`));
 ```
 
-(Note we're using `failed` — the fix from your Lesson 02 review. `failed` fires only
-once attempts are exhausted, **not** on every intermediate retry.)
+**⚠️ Corrected after we verified empirically** (the first version of this lesson
+got it wrong — proof that "log it and observe" beats assuming): there are **two
+different `failed` events**, and they fire at different times:
+
+| Event | Fires when | Use for |
+|-------|-----------|---------|
+| `worker.on("failed")` | **every** failed attempt — even ones that will be retried | logging/observing each retry |
+| `queueEvents.on("failed")` | only when attempts are **exhausted** and the job lands in `failed` for good | alerting, dead-lettering |
+| `queueEvents.on("retries-exhausted")` | same moment as above, with `attemptsMade` | explicit "gave up" handling |
+
+So if your worker's `failed` listener prints "gave up", it's lying on intermediate
+retries — check `job.attemptsMade >= (job.opts.attempts ?? 1)` if you need to know
+whether this was the final attempt, or listen on `QueueEvents` instead.
+
+(And `error` is still a third, different thing — a worker-level problem, the fix
+from your Lesson 02 review.)
 
 ### Inspecting a permanently-failed job
 

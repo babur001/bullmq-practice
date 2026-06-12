@@ -5,11 +5,14 @@ import { QueueEvents } from "bullmq";
 const streamMathEvents = new QueueEvents("math", { connection: connection });
 await streamMathEvents.waitUntilReady();
 
-const job = await mathQueue.add("sum", { a: 2, b: 2 });
+console.log(await mathQueue.getJobCounts());
+
+const job = await mathQueue.add("sum", { a: 2, b: 2 }, { attempts: 5 });
 // Here if the worker throws i think the `waitUntilFinished` also throws, and we should be carefull here
 const result = await job.waitUntilFinished(streamMathEvents);
+const result3 = await mathQueue.getJob(job.id!);
 
-console.log("result", result);
+console.log("result", await result3?.getState(), result3?.attemptsMade);
 
 await streamMathEvents.close();
 await mathQueue.close();
