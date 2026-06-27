@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lesson 07 — Why Exactly-Once Is Impossible (and what to do)</title>
+<style>
+  :root {
+    --bg:#0e1117; --panel:#161b22; --border:#30363d; --text:#c9d1d9; --muted:#8b949e;
+    --accent:#58a6ff; --green:#3fb950; --amber:#d29922; --red:#f85149; --slot:#21262d;
+    --purple:#bc8cff;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+    font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; padding:24px; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  .sub { color:var(--muted); margin:0 0 18px; max-width:780px; }
+  .controls { display:flex; flex-wrap:wrap; gap:16px; align-items:center;
+    background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:14px 18px; margin-bottom:18px; }
+  .toggle { display:flex; align-items:center; gap:8px; cursor:pointer; user-select:none; font-size:14px; }
+  .toggle input { width:16px; height:16px; accent-color:var(--accent); }
+  .toggle .hint { color:var(--muted); font-size:12px; }
+  .btns { margin-left:auto; display:flex; gap:8px; }
+  .btn { background:var(--green); color:#07120a; border:0; border-radius:8px; padding:9px 18px; font-weight:600; cursor:pointer; font-size:14px; }
+  .btn.secondary { background:var(--slot); color:var(--text); border:1px solid var(--border); }
+  .btn:disabled { opacity:.5; cursor:not-allowed; }
+  .stage { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .lane { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:14px; min-height:120px; position:relative; }
+  .lane h3 { margin:0 0 12px; font-size:13px; }
+  .lane.A h3 { color:var(--accent); } .lane.B h3 { color:var(--purple); }
+  .state { display:inline-block; padding:4px 10px; border-radius:6px; font-size:12px; font-weight:600;
+    background:var(--slot); border:1px solid var(--border); margin-bottom:10px; transition:all .2s; }
+  .state.work { border-color:var(--green); color:var(--green); }
+  .state.charge { border-color:var(--amber); color:var(--amber); }
+  .state.stall { border-color:var(--red); color:var(--red); }
+  .state.skip { border-color:var(--muted); color:var(--muted); }
+  .state.done { border-color:var(--green); color:var(--text); background:rgba(63,185,80,.12); }
+  .state.lost { border-color:var(--red); color:var(--red); background:rgba(248,81,73,.1); }
+  .lockwrap { margin-top:6px; }
+  .lockwrap .k { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+  .lockbar { height:10px; border-radius:5px; background:var(--slot); overflow:hidden; margin-top:4px; border:1px solid var(--border); }
+  .lockbar .fill { height:100%; width:100%; background:linear-gradient(90deg,var(--green),var(--amber)); transition:width .1s linear; }
+  .lockbar .fill.expired { background:var(--red); }
+  .actor { font-size:12px; color:var(--muted); margin-top:8px; min-height:18px; }
+  .ledger { margin-top:16px; display:flex; gap:24px; align-items:center;
+    background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:16px 20px; }
+  .ledger .count { font-size:40px; font-weight:800; line-height:1; }
+  .ledger .count.bad { color:var(--red); } .ledger .count.good { color:var(--green); }
+  .ledger .lbl { font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+  .ledger .verdict { font-size:14px; }
+  .ledger .key { font-family:ui-monospace,Menlo,monospace; font-size:12px; color:var(--muted); }
+  .clock { margin-left:auto; font-family:ui-monospace,Menlo,monospace; color:var(--accent); font-size:13px; }
+  .log { margin-top:14px; background:#0a0d12; border:1px solid var(--border); border-radius:8px; padding:12px 14px;
+    font-family:ui-monospace,Menlo,monospace; font-size:12px; max-height:170px; overflow:auto; }
+  .log div { padding:1px 0; color:var(--muted); }
+  .log .hl { color:var(--text); } .log .ok { color:var(--green); } .log .warn { color:var(--amber); } .log .err { color:var(--red); }
+  .note { margin-top:14px; font-size:13px; color:var(--muted); max-width:840px; }
+  .note b { color:var(--amber); }
+</style>
+</head>
+<body>
+  <h1>One job. How many charges?</h1>
+  <p class="sub">
+    Worker A claims a job under a <b>lock with a TTL</b>, charges a card, then needs to ack
+    "done" to Redis. If A <b>stalls</b> in the gap between charging and acking, the lock
+    <b>expires</b>, Redis hands the same job to Worker B, and B charges <b>again</b> — unless a
+    consumer-side <b>idempotency guard</b> (atomic <code>SET NX</code>) stops it. Toggle the two
+    switches and watch the ledger.
+  </p>
+
+  <div class="controls">
+    <label class="toggle"><input type="checkbox" id="stall" checked />
+      <span>Stall Worker A <span class="hint">(GC pause / CPU block before ack → lock expires)</span></span></label>
+    <label class="toggle"><input type="checkbox" id="guard" />
+      <span>Idempotency guard <span class="hint">(atomic SET charged:sale NX)</span></span></label>
+    <div class="btns">
+      <button class="btn" id="run">▶ Run</button>
+      <button class="btn secondary" id="reset">Reset</button>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="lane A">
+      <h3>Worker A</h3>
+      <div><span class="state" id="sA">idle</span></div>
+      <div class="lockwrap"><span class="k">job lock TTL</span>
+        <div class="lockbar"><div class="fill" id="lock"></div></div></div>
+      <div class="actor" id="aA"></div>
+    </div>
+    <div class="lane B">
+      <h3>Worker B</h3>
+      <div><span class="state" id="sB">idle</span></div>
+      <div class="actor" id="aB" style="margin-top:34px"></div>
+    </div>
+  </div>
+
+  <div class="ledger">
+    <div><div class="count" id="charges">0</div><div class="lbl">actual charges</div></div>
+    <div><div class="verdict" id="verdict">—</div>
+      <div class="key" id="keystate">dedup key <code>charged:sale1001</code>: unset</div></div>
+    <div class="clock" id="clock">t = 0.0s</div>
+  </div>
+
+  <div class="log" id="log"></div>
+
+  <p class="note">
+    Default (<b>stall on, guard off</b>) → <b>2 charges</b> from one job: the canonical
+    double-charge. Turn the <b>guard on</b> → <b>1 charge</b>: B's atomic claim finds the key A
+    already set and skips. Turn <b>stall off</b> → A finishes before the lock expires, B never
+    gets the job, 1 charge either way. The lock is a <b>lease, not a mutex</b> — only the guard
+    makes processing <i>effectively-once</i>.
+  </p>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const LOCK_MS = 3000;       // sim lock TTL
+  let raf=null, t=0, last=null, running=false;
+  let charges=0, keySet=false, events=[], idx=0;
+
+  function setState(el, txt, cls){ const e=$(el); e.textContent=txt; e.className="state "+(cls||""); }
+  function log(msg, cls){ const d=document.createElement("div"); if(cls)d.className=cls; d.innerHTML=`<span style="color:#586069">t=${(t/1000).toFixed(1)}s </span>${msg}`; $("log").appendChild(d); $("log").scrollTop=1e9; }
+
+  function build() {
+    const stall = $("stall").checked, guard = $("guard").checked;
+    // event timeline (sim ms). A charges early, then either acks or stalls.
+    const ev = [];
+    ev.push({ t:0,   fn:()=>{ setState("sA","🔒 locked — processing","work"); $("aA").textContent="claimed job, lock TTL started"; log("Worker A acquires lock on job (TTL 3.0s)","hl"); }});
+    ev.push({ t:700, fn:()=>{ setState("sA","💳 charging card","charge");
+      const won = !guard || !keySet;
+      if (guard) {
+        if (keySet) { setState("sA","skip (already charged)","skip"); $("aA").textContent="SET NX failed → no-op"; log("A: SET charged:sale1001 NX → nil (already set) → SKIP","warn"); return; }
+        keySet=true; $("keystate").innerHTML='dedup key <code>charged:sale1001</code>: <b style="color:var(--green)">set by A</b>';
+        log("A: SET charged:sale1001 NX → OK (claimed)","ok");
+      }
+      charges++; $("charges").textContent=charges; $("aA").textContent="charged $100 ✅";
+      log("A charges the card 💳  → ledger = "+charges, "warn");
+    }});
+    if (stall) {
+      ev.push({ t:1100, fn:()=>{ setState("sA","🧊 STALLED (before ack)","stall"); $("aA").textContent="frozen — cannot renew lock or ack"; log("A STALLS before acking (GC/CPU block) — lock keeps draining","err"); }});
+      // lock expires at LOCK_MS
+      ev.push({ t:LOCK_MS, fn:()=>{ $("lock").classList.add("expired"); log("⏰ lock TTL hits 0 → BullMQ marks job STALLED, requeues it","err"); }});
+      ev.push({ t:LOCK_MS+300, fn:()=>{ setState("sB","🔒 locked — processing","work"); $("aB").textContent="picked up the SAME job"; log("Worker B picks up the same job","hl"); }});
+      ev.push({ t:LOCK_MS+1000, fn:()=>{ setState("sB","💳 charging card","charge");
+        if (guard && keySet) { setState("sB","skip (already charged)","skip"); $("aB").textContent="SET NX failed → no-op ✅"; log("B: SET charged:sale1001 NX → nil (A already set it) → SKIP charge","ok"); return; }
+        if (guard) { keySet=true; log("B: SET charged:sale1001 NX → OK","ok"); }
+        charges++; $("charges").textContent=charges; $("aB").textContent="charged $100 "+(guard?"":"❌ AGAIN");
+        log("B charges the card 💳  → ledger = "+charges, guard?"warn":"err");
+      }});
+      ev.push({ t:LOCK_MS+1600, fn:()=>{ setState("sB","✔ completed","done"); }});
+      ev.push({ t:LOCK_MS+1900, fn:()=>{ setState("sA","lock lost — ack rejected","lost"); $("aA").textContent="woke up, but lock was stolen"; log("A wakes, tries to ack → rejected (lock no longer held)","warn"); finish(); }});
+    } else {
+      ev.push({ t:1400, fn:()=>{ setState("sA","✔ completed (acked in time)","done"); $("aA").textContent="acked before lock expired"; $("aB").textContent="never received the job"; log("A acks 'done' before lock expires → job complete","ok"); finish(); }});
+    }
+    return ev;
+  }
+
+  function finish() {
+    running=false; cancelAnimationFrame(raf);
+    const v=$("verdict");
+    if (charges<=1) v.innerHTML='<b style="color:var(--green)">✅ effectively-once</b> — one charge';
+    else v.innerHTML='<b style="color:var(--red)">❌ double charge</b> — same job ran twice';
+    $("charges").className = "count "+(charges<=1?"good":"bad");
+    $("run").disabled=false; $("run").textContent="▶ Run again";
+  }
+
+  function loop(now){
+    if(last==null) last=now; let dt=now-last; last=now; if(dt>60)dt=60; t+=dt;
+    // lock bar (only meaningful while A holds it)
+    const stall=$("stall").checked;
+    const pct = Math.max(0, 100 - (t/LOCK_MS)*100);
+    $("lock").style.width = (t<LOCK_MS? pct : 0) + "%";
+    $("clock").textContent = "t = "+(t/1000).toFixed(1)+"s";
+    while(idx<events.length && t>=events[idx].t){ events[idx].fn(); idx++; }
+    if(running) raf=requestAnimationFrame(loop);
+  }
+
+  function reset(){
+    cancelAnimationFrame(raf); raf=null; running=false; last=null; t=0; charges=0; keySet=false; idx=0;
+    $("charges").textContent="0"; $("charges").className="count";
+    $("verdict").textContent="—"; $("keystate").innerHTML='dedup key <code>charged:sale1001</code>: unset';
+    $("clock").textContent="t = 0.0s"; $("log").innerHTML="";
+    $("lock").style.width="100%"; $("lock").classList.remove("expired");
+    setState("sA","idle",""); setState("sB","idle",""); $("aA").textContent=""; $("aB").textContent="";
+    $("run").disabled=false; $("run").textContent="▶ Run";
+  }
+
+  function run(){ if(running)return; reset(); events=build(); running=true; last=null;
+    $("run").disabled=true; $("run").textContent="running…"; raf=requestAnimationFrame(loop); }
+
+  $("run").addEventListener("click", run);
+  $("reset").addEventListener("click", reset);
+  ["stall","guard"].forEach(id=>$(id).addEventListener("change", reset));
+  reset();
+})();
+</script>
+</body>
+</html>

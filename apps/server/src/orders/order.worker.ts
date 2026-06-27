@@ -7,7 +7,7 @@ const worker = new Worker(
   async (job) => {
     const { id, amount, valid } = job.data;
 
-    if (!valid) throw new Error(`Invalid order ${id}`);
+    if (!valid) throw new Error(`Invalid order ${job.id}`);
     console.log("success");
 
     return { charged: true };
@@ -18,11 +18,10 @@ const worker = new Worker(
 worker.on("failed", async (job) => {
   if (!job) return;
 
-  const attempts = 3;
   // (3 * default_retry_count) in total DLQ's if this check omitted
   console.log(job.attemptsMade);
 
-  if (job.attemptsMade >= attempts) {
+  if (job.attemptsMade >= (job.opts.attempts || 1)) {
     console.log(`■■■ Failed ${job.id} @ ${Date.now() % 100000}`);
 
     await orders_dlq_queue.add("failed-order", {
