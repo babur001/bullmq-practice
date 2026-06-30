@@ -3,113 +3,231 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Lesson 07 — Why Exactly-Once Is Impossible (and what to do)</title>
+<title>Lesson 07 — Exactly-Once? (OGOH dispatch console)</title>
 <style>
-  :root {
-    --bg:#0e1117; --panel:#161b22; --border:#30363d; --text:#c9d1d9; --muted:#8b949e;
-    --accent:#58a6ff; --green:#3fb950; --amber:#d29922; --red:#f85149; --slot:#21262d;
-    --purple:#bc8cff;
+  :root{
+    --bg:#0b0b0d; --bg2:#070708;
+    --panel:#141416; --panel2:#1a1a1d; --slot:#202024;
+    --border:#2a2a2f; --border-soft:rgba(255,255,255,.06);
+    --text:#ededed; --muted:#7c7c83; --muted2:#55555b;
+    --coral:#ff6c5a; --coral-deep:#e63c2c; --coral-glow:rgba(255,92,70,.40);
+    --emerald:#37d39a; --emerald-dim:rgba(55,211,154,.14);
+    --amber:#e3a23a; --amber-dim:rgba(227,162,58,.14);
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
   }
-  * { box-sizing:border-box; }
-  body { margin:0; background:var(--bg); color:var(--text);
-    font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; padding:24px; }
-  h1 { font-size:20px; margin:0 0 4px; }
-  .sub { color:var(--muted); margin:0 0 18px; max-width:780px; }
-  .controls { display:flex; flex-wrap:wrap; gap:16px; align-items:center;
-    background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:14px 18px; margin-bottom:18px; }
-  .toggle { display:flex; align-items:center; gap:8px; cursor:pointer; user-select:none; font-size:14px; }
-  .toggle input { width:16px; height:16px; accent-color:var(--accent); }
-  .toggle .hint { color:var(--muted); font-size:12px; }
-  .btns { margin-left:auto; display:flex; gap:8px; }
-  .btn { background:var(--green); color:#07120a; border:0; border-radius:8px; padding:9px 18px; font-weight:600; cursor:pointer; font-size:14px; }
-  .btn.secondary { background:var(--slot); color:var(--text); border:1px solid var(--border); }
-  .btn:disabled { opacity:.5; cursor:not-allowed; }
-  .stage { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
-  .lane { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:14px; min-height:120px; position:relative; }
-  .lane h3 { margin:0 0 12px; font-size:13px; }
-  .lane.A h3 { color:var(--accent); } .lane.B h3 { color:var(--purple); }
-  .state { display:inline-block; padding:4px 10px; border-radius:6px; font-size:12px; font-weight:600;
-    background:var(--slot); border:1px solid var(--border); margin-bottom:10px; transition:all .2s; }
-  .state.work { border-color:var(--green); color:var(--green); }
-  .state.charge { border-color:var(--amber); color:var(--amber); }
-  .state.stall { border-color:var(--red); color:var(--red); }
-  .state.skip { border-color:var(--muted); color:var(--muted); }
-  .state.done { border-color:var(--green); color:var(--text); background:rgba(63,185,80,.12); }
-  .state.lost { border-color:var(--red); color:var(--red); background:rgba(248,81,73,.1); }
-  .lockwrap { margin-top:6px; }
-  .lockwrap .k { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
-  .lockbar { height:10px; border-radius:5px; background:var(--slot); overflow:hidden; margin-top:4px; border:1px solid var(--border); }
-  .lockbar .fill { height:100%; width:100%; background:linear-gradient(90deg,var(--green),var(--amber)); transition:width .1s linear; }
-  .lockbar .fill.expired { background:var(--red); }
-  .actor { font-size:12px; color:var(--muted); margin-top:8px; min-height:18px; }
-  .ledger { margin-top:16px; display:flex; gap:24px; align-items:center;
-    background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:16px 20px; }
-  .ledger .count { font-size:40px; font-weight:800; line-height:1; }
-  .ledger .count.bad { color:var(--red); } .ledger .count.good { color:var(--green); }
-  .ledger .lbl { font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
-  .ledger .verdict { font-size:14px; }
-  .ledger .key { font-family:ui-monospace,Menlo,monospace; font-size:12px; color:var(--muted); }
-  .clock { margin-left:auto; font-family:ui-monospace,Menlo,monospace; color:var(--accent); font-size:13px; }
-  .log { margin-top:14px; background:#0a0d12; border:1px solid var(--border); border-radius:8px; padding:12px 14px;
-    font-family:ui-monospace,Menlo,monospace; font-size:12px; max-height:170px; overflow:auto; }
-  .log div { padding:1px 0; color:var(--muted); }
-  .log .hl { color:var(--text); } .log .ok { color:var(--green); } .log .warn { color:var(--amber); } .log .err { color:var(--red); }
-  .note { margin-top:14px; font-size:13px; color:var(--muted); max-width:840px; }
-  .note b { color:var(--amber); }
+  *{box-sizing:border-box;}
+  html,body{margin:0;}
+  body{
+    background:
+      repeating-linear-gradient(45deg,rgba(255,255,255,.013) 0 2px,transparent 2px 11px),
+      radial-gradient(120% 80% at 50% -10%,#15151a 0%,var(--bg) 55%,var(--bg2) 100%);
+    color:var(--text); font:14px/1.55 var(--sans);
+    min-height:100vh; padding:22px 20px 0; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:760px;margin:0 auto;}
+
+  /* ---------- top bar ---------- */
+  .topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;}
+  .brand{display:flex;align-items:center;gap:10px;}
+  .brand .mark{color:var(--coral);display:flex;}
+  .brand .name{font-weight:700;letter-spacing:.34em;font-size:15px;}
+  .pill{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border);
+    background:var(--panel);border-radius:999px;padding:6px 13px;font-size:11px;
+    letter-spacing:.16em;text-transform:uppercase;color:var(--muted);}
+  .pill .dot{width:7px;height:7px;border-radius:50%;background:var(--muted2);}
+  .pill.on{color:var(--emerald);border-color:rgba(55,211,154,.32);}
+  .pill.on .dot{background:var(--emerald);box-shadow:0 0 8px var(--emerald);}
+  .rule{height:1px;background:var(--border-soft);margin:14px 0 16px;}
+
+  /* ---------- object header ---------- */
+  .obj-tag{font-size:11px;letter-spacing:.2em;color:var(--muted2);text-transform:uppercase;margin-bottom:4px;}
+  .obj-head{display:flex;align-items:center;justify-content:space-between;gap:12px;}
+  .obj-title{font-size:25px;font-weight:700;letter-spacing:-.01em;}
+  .lede{font-size:12.5px;color:var(--muted);max-width:720px;margin:10px 2px 0;line-height:1.6;}
+  .lede b{color:var(--text);} .lede code{font-family:var(--mono);font-size:11.5px;color:var(--coral);}
+
+  /* ---------- controls ---------- */
+  .controls{display:flex;flex-wrap:wrap;gap:14px;align-items:center;background:var(--panel);
+    border:1px solid var(--border);border-radius:16px;padding:14px 16px;margin:18px 0;}
+  .toggle{display:flex;align-items:center;gap:9px;cursor:pointer;user-select:none;}
+  .toggle input{position:absolute;opacity:0;pointer-events:none;}
+  .toggle .sw{width:38px;height:21px;border-radius:999px;background:var(--slot);border:1px solid var(--border);
+    position:relative;transition:.18s;flex:none;}
+  .toggle .sw::after{content:"";position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:50%;
+    background:var(--muted);transition:.18s;}
+  .toggle input:checked + .sw{background:rgba(227,162,58,.22);border-color:rgba(227,162,58,.5);}
+  .toggle input:checked + .sw::after{transform:translateX(17px);background:var(--amber);box-shadow:0 0 8px var(--amber);}
+  .toggle.guard input:checked + .sw{background:rgba(55,211,154,.2);border-color:rgba(55,211,154,.5);}
+  .toggle.guard input:checked + .sw::after{background:var(--emerald);box-shadow:0 0 8px var(--emerald);}
+  .toggle .tl{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--text);font-weight:600;}
+  .toggle .hint{display:block;font-size:11px;letter-spacing:.02em;text-transform:none;color:var(--muted2);font-weight:400;margin-top:1px;}
+  .btns{margin-left:auto;display:flex;gap:8px;}
+  .btn{background:var(--coral);color:#2a0a05;border:0;border-radius:10px;padding:10px 18px;
+    font:inherit;font-weight:700;letter-spacing:.04em;cursor:pointer;}
+  .btn.sec{background:var(--slot);color:var(--text);border:1px solid var(--border);}
+  .btn:disabled{opacity:.5;cursor:not-allowed;}
+
+  /* ---------- lanes ---------- */
+  .stage{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+  .node{position:relative;background:var(--panel);border:1px solid var(--border);border-radius:16px;
+    padding:15px 16px;min-height:138px;transition:.2s;overflow:hidden;}
+  .node.A.hot{border-color:var(--coral);box-shadow:0 0 22px var(--coral-glow);}
+  .node.B.hot{border-color:var(--emerald);box-shadow:0 0 22px var(--emerald-dim);}
+  .node .role{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted2);}
+  .node .nm{font-weight:700;font-size:15px;margin:2px 0 11px;letter-spacing:.02em;}
+  .node.A .nm{color:var(--coral);} .node.B .nm{color:var(--emerald);}
+  .state{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:999px;font-size:11px;
+    letter-spacing:.06em;font-weight:600;background:var(--slot);border:1px solid var(--border);color:var(--muted);
+    transition:.18s;}
+  .state .led{width:7px;height:7px;border-radius:50%;background:var(--muted2);}
+  .state.work{border-color:rgba(255,92,70,.4);color:var(--coral);} .state.work .led{background:var(--coral);box-shadow:0 0 6px var(--coral);}
+  .state.charge{border-color:rgba(227,162,58,.5);color:var(--amber);} .state.charge .led{background:var(--amber);box-shadow:0 0 6px var(--amber);}
+  .state.stall{border-color:rgba(227,162,58,.5);color:var(--amber);background:var(--amber-dim);} .state.stall .led{background:var(--amber);}
+  .state.skip{border-color:var(--border);color:var(--muted);} .state.skip .led{background:var(--muted2);}
+  .state.done{border-color:rgba(55,211,154,.5);color:var(--emerald);background:var(--emerald-dim);} .state.done .led{background:var(--emerald);box-shadow:0 0 6px var(--emerald);}
+  .state.lost{border-color:rgba(255,92,70,.5);color:var(--coral);background:rgba(255,92,70,.1);} .state.lost .led{background:var(--coral);}
+  .lockwrap{margin-top:12px;}
+  .lockwrap .k{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted2);}
+  .lockbar{height:9px;border-radius:5px;background:var(--slot);overflow:hidden;margin-top:5px;border:1px solid var(--border);}
+  .lockbar .fill{height:100%;width:100%;background:linear-gradient(90deg,var(--emerald),var(--amber));transition:width .1s linear;}
+  .lockbar .fill.expired{background:var(--coral);box-shadow:0 0 8px var(--coral-glow);}
+  .actor{font-size:11.5px;color:var(--muted);margin-top:10px;min-height:18px;line-height:1.45;}
+
+  /* ---------- ledger ---------- */
+  .ledger{margin-top:14px;background:var(--panel);border:1px solid var(--border);border-radius:16px;
+    padding:16px 18px;display:flex;align-items:center;gap:22px;flex-wrap:wrap;}
+  .ledger .num{font-family:var(--mono);font-size:40px;font-weight:700;line-height:1;color:var(--text);}
+  .ledger .num.bad{color:var(--coral);} .ledger .num.good{color:var(--emerald);}
+  .ledger .l{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted2);margin-top:5px;}
+  .ledger .mid{flex:1;border-left:1px solid var(--border-soft);padding-left:18px;min-width:200px;}
+  .ledger .verdict{font-size:13px;color:var(--muted);line-height:1.5;}
+  .ledger .verdict b{color:var(--text);}
+  .ledger .key{font-family:var(--mono);font-size:11.5px;color:var(--muted2);margin-top:6px;}
+  .ledger .key code{color:var(--text);}
+  .ledger .clock{font-family:var(--mono);font-size:12px;color:var(--coral);letter-spacing:.05em;align-self:flex-start;}
+
+  /* ---------- log ---------- */
+  .log{margin-top:14px;background:#070709;border:1px solid var(--border);border-radius:12px;
+    padding:12px 15px;font-family:var(--mono);font-size:12px;max-height:160px;overflow:auto;}
+  .log div{padding:1.5px 0;color:var(--muted2);}
+  .log .hl{color:var(--text);} .log .ok{color:var(--emerald);} .log .cor{color:var(--coral);} .log .amb{color:var(--amber);}
+  .log .t{color:var(--muted2);}
+
+  .footnote{font-size:12.5px;color:var(--muted);max-width:720px;margin:16px 2px 0;line-height:1.6;}
+  .footnote b{color:var(--coral);} .footnote .g{color:var(--emerald);} .footnote .a{color:var(--amber);}
+  .footnote code{font-family:var(--mono);font-size:11.5px;color:var(--text);}
+
+  /* ---------- bottom nav chrome ---------- */
+  .nav{position:sticky;bottom:0;margin:26px -20px 0;padding:12px 0 16px;
+    background:linear-gradient(180deg,transparent,var(--bg2) 40%);
+    display:flex;justify-content:center;gap:34px;border-top:1px solid var(--border-soft);}
+  .nav .tab{display:flex;flex-direction:column;align-items:center;gap:5px;font-size:11px;
+    letter-spacing:.05em;color:var(--muted2);}
+  .nav .tab.active{color:var(--coral);}
+  .nav .tab svg{opacity:.85;}
 </style>
 </head>
 <body>
-  <h1>One job. How many charges?</h1>
-  <p class="sub">
-    Worker A claims a job under a <b>lock with a TTL</b>, charges a card, then needs to ack
-    "done" to Redis. If A <b>stalls</b> in the gap between charging and acking, the lock
-    <b>expires</b>, Redis hands the same job to Worker B, and B charges <b>again</b> — unless a
-    consumer-side <b>idempotency guard</b> (atomic <code>SET NX</code>) stops it. Toggle the two
-    switches and watch the ledger.
+<div class="wrap">
+
+  <!-- top bar -->
+  <div class="topbar">
+    <div class="brand">
+      <span class="mark" aria-hidden="true">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M5 17h14"/><path d="M6 17a6 6 0 0 1 12 0"/><path d="M12 5V3"/><path d="M19 9l1-1"/><path d="M5 9 4 8"/>
+        </svg>
+      </span>
+      <span class="name">OGOH</span>
+    </div>
+    <span class="pill on"><span class="dot"></span>Broker onlayn</span>
+  </div>
+
+  <div class="rule"></div>
+
+  <!-- object header -->
+  <div class="obj-tag">Lesson 07 · Idempotentlik</div>
+  <div class="obj-head">
+    <div class="obj-title">Exactly-Once?</div>
+    <span class="pill" id="modePill"><span class="dot"></span><span id="modePillTxt">Bitta ish</span></span>
+  </div>
+  <p class="lede">
+    Worker&nbsp;A claims a job under a <b>lock with a TTL</b> (<code>QULF</code>), charges a card
+    (<code>TO'LOV</code>), then must ack "done" to Redis. If A <b>stalls</b> in the gap between
+    charging and acking, the lock expires, Redis hands the same job to Worker&nbsp;B, and B charges
+    <b>again</b> — unless a consumer-side <b>idempotency guard</b> (<code>KAFOLAT</code>, atomic
+    <code>SET NX</code>) stops it. Toggle the switches and watch the ledger.
   </p>
 
+  <!-- controls -->
   <div class="controls">
-    <label class="toggle"><input type="checkbox" id="stall" checked />
-      <span>Stall Worker A <span class="hint">(GC pause / CPU block before ack → lock expires)</span></span></label>
-    <label class="toggle"><input type="checkbox" id="guard" />
-      <span>Idempotency guard <span class="hint">(atomic SET charged:sale NX)</span></span></label>
+    <label class="toggle">
+      <input type="checkbox" id="stall" checked /><span class="sw"></span>
+      <span><span class="tl">Stall Worker A</span><span class="hint">GC pause / CPU block before ack → lock expires</span></span>
+    </label>
+    <label class="toggle guard">
+      <input type="checkbox" id="guard" /><span class="sw"></span>
+      <span><span class="tl">Idempotency guard</span><span class="hint">atomic SET charged:sale1001 NX</span></span>
+    </label>
     <div class="btns">
       <button class="btn" id="run">▶ Run</button>
-      <button class="btn secondary" id="reset">Reset</button>
+      <button class="btn sec" id="reset">Reset</button>
     </div>
   </div>
 
+  <!-- lanes -->
   <div class="stage">
-    <div class="lane A">
-      <h3>Worker A</h3>
-      <div><span class="state" id="sA">idle</span></div>
-      <div class="lockwrap"><span class="k">job lock TTL</span>
+    <div class="node A" id="laneA">
+      <div class="role">worker · raqobat</div>
+      <div class="nm">Worker A</div>
+      <div><span class="state" id="sA"><span class="led"></span>idle</span></div>
+      <div class="lockwrap"><span class="k">QULF · job lock TTL</span>
         <div class="lockbar"><div class="fill" id="lock"></div></div></div>
       <div class="actor" id="aA"></div>
     </div>
-    <div class="lane B">
-      <h3>Worker B</h3>
-      <div><span class="state" id="sB">idle</span></div>
-      <div class="actor" id="aB" style="margin-top:34px"></div>
+    <div class="node B" id="laneB">
+      <div class="role">worker · raqobat</div>
+      <div class="nm">Worker B</div>
+      <div><span class="state" id="sB"><span class="led"></span>idle</span></div>
+      <div class="actor" id="aB" style="margin-top:40px"></div>
     </div>
   </div>
 
+  <!-- ledger -->
   <div class="ledger">
-    <div><div class="count" id="charges">0</div><div class="lbl">actual charges</div></div>
-    <div><div class="verdict" id="verdict">—</div>
-      <div class="key" id="keystate">dedup key <code>charged:sale1001</code>: unset</div></div>
+    <div><div class="num" id="charges">0</div><div class="l">TO'LOV · charges</div></div>
+    <div class="mid">
+      <div class="verdict" id="verdict">—</div>
+      <div class="key" id="keystate">KAFOLAT key <code>charged:sale1001</code>: unset</div>
+    </div>
     <div class="clock" id="clock">t = 0.0s</div>
   </div>
 
   <div class="log" id="log"></div>
 
-  <p class="note">
-    Default (<b>stall on, guard off</b>) → <b>2 charges</b> from one job: the canonical
-    double-charge. Turn the <b>guard on</b> → <b>1 charge</b>: B's atomic claim finds the key A
-    already set and skips. Turn <b>stall off</b> → A finishes before the lock expires, B never
-    gets the job, 1 charge either way. The lock is a <b>lease, not a mutex</b> — only the guard
-    makes processing <i>effectively-once</i>.
-  </p>
+  <p class="footnote" id="footnote"></p>
+
+  <!-- bottom nav chrome -->
+  <div class="nav">
+    <div class="tab active">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17h14"/><path d="M6 17a6 6 0 0 1 12 0"/><path d="M12 5V3"/></svg>
+      Trevoga</div>
+    <div class="tab">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M16 4a3 3 0 0 1 0 6"/><path d="M21 20a6 6 0 0 0-3-5"/></svg>
+      Aholi</div>
+    <div class="tab">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+      Tarix</div>
+    <div class="tab">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4 3 7v13l6-3 6 3 6-3V4l-6 3-6-3Z"/><path d="M9 4v13"/><path d="M15 7v13"/></svg>
+      Xarita</div>
+    <div class="tab">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg>
+      Sozlama</div>
+  </div>
+
+</div>
 
 <script>
 (() => {
@@ -118,39 +236,40 @@
   let raf=null, t=0, last=null, running=false;
   let charges=0, keySet=false, events=[], idx=0;
 
-  function setState(el, txt, cls){ const e=$(el); e.textContent=txt; e.className="state "+(cls||""); }
-  function log(msg, cls){ const d=document.createElement("div"); if(cls)d.className=cls; d.innerHTML=`<span style="color:#586069">t=${(t/1000).toFixed(1)}s </span>${msg}`; $("log").appendChild(d); $("log").scrollTop=1e9; }
+  function setState(el, txt, cls){ const e=$(el); e.innerHTML='<span class="led"></span>'+txt; e.className="state "+(cls||""); }
+  function hot(lane,on){ $(lane).classList.toggle("hot",on); }
+  function log(msg, cls){ const d=document.createElement("div"); if(cls)d.className=cls;
+    d.innerHTML=`<span class="t">t=${(t/1000).toFixed(1)}s </span>${msg}`; $("log").appendChild(d); $("log").scrollTop=1e9; }
 
   function build() {
     const stall = $("stall").checked, guard = $("guard").checked;
     // event timeline (sim ms). A charges early, then either acks or stalls.
     const ev = [];
-    ev.push({ t:0,   fn:()=>{ setState("sA","🔒 locked — processing","work"); $("aA").textContent="claimed job, lock TTL started"; log("Worker A acquires lock on job (TTL 3.0s)","hl"); }});
-    ev.push({ t:700, fn:()=>{ setState("sA","💳 charging card","charge");
-      const won = !guard || !keySet;
+    ev.push({ t:0,   fn:()=>{ setState("sA","QULF · processing","work"); hot("laneA",true); $("aA").textContent="claimed job, lock TTL started"; log("Worker A acquires lock on job (TTL 3.0s)","hl"); }});
+    ev.push({ t:700, fn:()=>{ setState("sA","TO'LOV · charging","charge");
       if (guard) {
-        if (keySet) { setState("sA","skip (already charged)","skip"); $("aA").textContent="SET NX failed → no-op"; log("A: SET charged:sale1001 NX → nil (already set) → SKIP","warn"); return; }
-        keySet=true; $("keystate").innerHTML='dedup key <code>charged:sale1001</code>: <b style="color:var(--green)">set by A</b>';
+        if (keySet) { setState("sA","skip (already charged)","skip"); $("aA").textContent="SET NX failed → no-op"; log("A: SET charged:sale1001 NX → nil (already set) → SKIP","amb"); return; }
+        keySet=true; $("keystate").innerHTML='KAFOLAT key <code>charged:sale1001</code>: <b style="color:var(--emerald)">set by A</b>';
         log("A: SET charged:sale1001 NX → OK (claimed)","ok");
       }
       charges++; $("charges").textContent=charges; $("aA").textContent="charged $100 ✅";
-      log("A charges the card 💳  → ledger = "+charges, "warn");
+      log("A charges the card 💳  → ledger = "+charges, "amb");
     }});
     if (stall) {
-      ev.push({ t:1100, fn:()=>{ setState("sA","🧊 STALLED (before ack)","stall"); $("aA").textContent="frozen — cannot renew lock or ack"; log("A STALLS before acking (GC/CPU block) — lock keeps draining","err"); }});
+      ev.push({ t:1100, fn:()=>{ setState("sA","STALL · before ack","stall"); hot("laneA",false); $("aA").textContent="frozen — cannot renew lock or ack"; log("A STALLS before acking (GC/CPU block) — lock keeps draining","amb"); }});
       // lock expires at LOCK_MS
-      ev.push({ t:LOCK_MS, fn:()=>{ $("lock").classList.add("expired"); log("⏰ lock TTL hits 0 → BullMQ marks job STALLED, requeues it","err"); }});
-      ev.push({ t:LOCK_MS+300, fn:()=>{ setState("sB","🔒 locked — processing","work"); $("aB").textContent="picked up the SAME job"; log("Worker B picks up the same job","hl"); }});
-      ev.push({ t:LOCK_MS+1000, fn:()=>{ setState("sB","💳 charging card","charge");
-        if (guard && keySet) { setState("sB","skip (already charged)","skip"); $("aB").textContent="SET NX failed → no-op ✅"; log("B: SET charged:sale1001 NX → nil (A already set it) → SKIP charge","ok"); return; }
+      ev.push({ t:LOCK_MS, fn:()=>{ $("lock").classList.add("expired"); log("⏰ lock TTL hits 0 → BullMQ marks job STALLED, requeues it","cor"); }});
+      ev.push({ t:LOCK_MS+300, fn:()=>{ setState("sB","QULF · processing","work"); hot("laneB",true); $("aB").textContent="picked up the SAME job"; log("Worker B picks up the same job","hl"); }});
+      ev.push({ t:LOCK_MS+1000, fn:()=>{ setState("sB","TO'LOV · charging","charge");
+        if (guard && keySet) { setState("sB","skip (already charged)","skip"); hot("laneB",false); $("aB").textContent="SET NX failed → no-op ✅"; log("B: SET charged:sale1001 NX → nil (A already set it) → SKIP charge","ok"); return; }
         if (guard) { keySet=true; log("B: SET charged:sale1001 NX → OK","ok"); }
-        charges++; $("charges").textContent=charges; $("aB").textContent="charged $100 "+(guard?"":"❌ AGAIN");
-        log("B charges the card 💳  → ledger = "+charges, guard?"warn":"err");
+        charges++; $("charges").textContent=charges; $("aB").textContent="charged $100 "+(guard?"":"❌ IKKI MARTA");
+        log("B charges the card 💳  → ledger = "+charges, guard?"amb":"cor");
       }});
-      ev.push({ t:LOCK_MS+1600, fn:()=>{ setState("sB","✔ completed","done"); }});
-      ev.push({ t:LOCK_MS+1900, fn:()=>{ setState("sA","lock lost — ack rejected","lost"); $("aA").textContent="woke up, but lock was stolen"; log("A wakes, tries to ack → rejected (lock no longer held)","warn"); finish(); }});
+      ev.push({ t:LOCK_MS+1600, fn:()=>{ setState("sB","BAJARILDI · completed","done"); hot("laneB",false); }});
+      ev.push({ t:LOCK_MS+1900, fn:()=>{ setState("sA","lock lost — ack rejected","lost"); $("aA").textContent="woke up, but lock was stolen"; log("A wakes, tries to ack → rejected (lock no longer held)","amb"); finish(); }});
     } else {
-      ev.push({ t:1400, fn:()=>{ setState("sA","✔ completed (acked in time)","done"); $("aA").textContent="acked before lock expired"; $("aB").textContent="never received the job"; log("A acks 'done' before lock expires → job complete","ok"); finish(); }});
+      ev.push({ t:1400, fn:()=>{ setState("sA","BAJARILDI · acked in time","done"); hot("laneA",false); $("aA").textContent="acked before lock expired"; $("aB").textContent="never received the job"; log("A acks 'done' before lock expires → job complete","ok"); finish(); }});
     }
     return ev;
   }
@@ -158,16 +277,17 @@
   function finish() {
     running=false; cancelAnimationFrame(raf);
     const v=$("verdict");
-    if (charges<=1) v.innerHTML='<b style="color:var(--green)">✅ effectively-once</b> — one charge';
-    else v.innerHTML='<b style="color:var(--red)">❌ double charge</b> — same job ran twice';
-    $("charges").className = "count "+(charges<=1?"good":"bad");
+    if (charges<=1) v.innerHTML='<b style="color:var(--emerald)">✅ effectively-once</b> — one charge, one job';
+    else v.innerHTML='<b style="color:var(--coral)">❌ IKKI MARTA — double charge</b> — same job ran twice';
+    $("charges").className = "num "+(charges<=1?"good":"bad");
+    $("modePillTxt").textContent = charges<=1 ? "Effectively-once" : "Ikki marta";
+    $("modePill").className = "pill "+(charges<=1?"on":"");
     $("run").disabled=false; $("run").textContent="▶ Run again";
   }
 
   function loop(now){
     if(last==null) last=now; let dt=now-last; last=now; if(dt>60)dt=60; t+=dt;
     // lock bar (only meaningful while A holds it)
-    const stall=$("stall").checked;
     const pct = Math.max(0, 100 - (t/LOCK_MS)*100);
     $("lock").style.width = (t<LOCK_MS? pct : 0) + "%";
     $("clock").textContent = "t = "+(t/1000).toFixed(1)+"s";
@@ -177,11 +297,13 @@
 
   function reset(){
     cancelAnimationFrame(raf); raf=null; running=false; last=null; t=0; charges=0; keySet=false; idx=0;
-    $("charges").textContent="0"; $("charges").className="count";
-    $("verdict").textContent="—"; $("keystate").innerHTML='dedup key <code>charged:sale1001</code>: unset';
+    $("charges").textContent="0"; $("charges").className="num";
+    $("verdict").textContent="—"; $("keystate").innerHTML='KAFOLAT key <code>charged:sale1001</code>: unset';
     $("clock").textContent="t = 0.0s"; $("log").innerHTML="";
     $("lock").style.width="100%"; $("lock").classList.remove("expired");
     setState("sA","idle",""); setState("sB","idle",""); $("aA").textContent=""; $("aB").textContent="";
+    hot("laneA",false); hot("laneB",false);
+    $("modePillTxt").textContent="Bitta ish"; $("modePill").className="pill";
     $("run").disabled=false; $("run").textContent="▶ Run";
   }
 
@@ -191,6 +313,14 @@
   $("run").addEventListener("click", run);
   $("reset").addEventListener("click", reset);
   ["stall","guard"].forEach(id=>$(id).addEventListener("change", reset));
+
+  $("footnote").innerHTML =
+    `Default (<b>stall on, guard off</b>) → <b>2 charges</b> from one job: the canonical `+
+    `<b>IKKI MARTA</b> double-charge. Turn the <span class="g">guard on</span> → <span class="g">1 charge</span>: `+
+    `B's atomic <code>SET NX</code> finds the key A already set and skips. Turn <b>stall off</b> → A acks before `+
+    `the lock expires, B never gets the job, 1 charge either way. The lock is a <span class="a">lease, not a mutex</span> — `+
+    `only the guard makes processing <span class="g">effectively-once</span>.`;
+
   reset();
 })();
 </script>

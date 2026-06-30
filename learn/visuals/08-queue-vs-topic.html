@@ -1,0 +1,416 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lesson 08 — Queue vs Topic (OGOH dispatch console)</title>
+<style>
+  :root{
+    --bg:#0b0b0d; --bg2:#070708;
+    --panel:#141416; --panel2:#1a1a1d; --slot:#202024;
+    --border:#2a2a2f; --border-soft:rgba(255,255,255,.06);
+    --text:#ededed; --muted:#7c7c83; --muted2:#55555b;
+    --coral:#ff6c5a; --coral-deep:#e63c2c; --coral-glow:rgba(255,92,70,.40);
+    --emerald:#37d39a; --emerald-dim:rgba(55,211,154,.14);
+    --amber:#e3a23a;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;}
+  body{
+    background:
+      repeating-linear-gradient(45deg,rgba(255,255,255,.013) 0 2px,transparent 2px 11px),
+      radial-gradient(120% 80% at 50% -10%,#15151a 0%,var(--bg) 55%,var(--bg2) 100%);
+    color:var(--text); font:14px/1.55 var(--sans);
+    min-height:100vh; padding:22px 20px 0; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:760px;margin:0 auto;}
+
+  /* ---------- top bar ---------- */
+  .topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;}
+  .brand{display:flex;align-items:center;gap:10px;}
+  .brand .mark{color:var(--coral);display:flex;}
+  .brand .name{font-weight:700;letter-spacing:.34em;font-size:15px;}
+  .pill{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border);
+    background:var(--panel);border-radius:999px;padding:6px 13px;font-size:11px;
+    letter-spacing:.16em;text-transform:uppercase;color:var(--muted);}
+  .pill .dot{width:7px;height:7px;border-radius:50%;background:var(--muted2);}
+  .pill.on{color:var(--emerald);border-color:rgba(55,211,154,.32);}
+  .pill.on .dot{background:var(--emerald);box-shadow:0 0 8px var(--emerald);}
+
+  .rule{height:1px;background:var(--border-soft);margin:14px 0 16px;}
+
+  /* ---------- object header ---------- */
+  .obj-tag{font-size:11px;letter-spacing:.2em;color:var(--muted2);text-transform:uppercase;margin-bottom:4px;}
+  .obj-head{display:flex;align-items:center;justify-content:space-between;gap:12px;}
+  .obj-title{font-size:25px;font-weight:700;letter-spacing:-.01em;}
+  .stats{display:flex;gap:22px;margin-top:9px;font-size:12px;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--muted2);}
+  .stats b{color:var(--text);font-weight:700;}
+
+  /* ---------- mode segmented ---------- */
+  .seg{display:flex;gap:6px;background:var(--panel);border:1px solid var(--border);
+    border-radius:12px;padding:5px;margin:18px 0 6px;}
+  .seg button{flex:1;border:0;background:transparent;color:var(--muted);cursor:pointer;
+    padding:11px 10px;border-radius:8px;font:inherit;font-size:12.5px;letter-spacing:.12em;
+    text-transform:uppercase;font-weight:600;transition:.18s;}
+  .seg button .sub{display:block;font-size:10px;letter-spacing:.05em;text-transform:none;
+    color:var(--muted2);font-weight:400;margin-top:2px;}
+  .seg button.active{background:var(--slot);color:var(--text);box-shadow:inset 0 0 0 1px var(--border);}
+  .seg button.active.q{color:var(--coral);}
+  .seg button.active.t{color:var(--emerald);}
+  .mode-note{font-size:12.5px;color:var(--muted);min-height:18px;margin:2px 2px 0;}
+
+  /* ---------- dial ---------- */
+  .dial-area{position:relative;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;padding:30px 0 14px;}
+  .sun{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);pointer-events:none;}
+  .emit-btn{position:relative;width:210px;height:210px;border-radius:50%;border:0;cursor:pointer;
+    background:radial-gradient(circle at 50% 38%,#ff8a72 0%,var(--coral) 42%,var(--coral-deep) 100%);
+    box-shadow:0 0 0 1px rgba(255,120,90,.5),0 0 46px 6px var(--coral-glow),
+      inset 0 -8px 26px rgba(150,20,10,.5),inset 0 6px 18px rgba(255,200,180,.32);
+    color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;
+    transition:transform .08s ease, box-shadow .2s;}
+  .emit-btn:hover{box-shadow:0 0 0 1px rgba(255,120,90,.6),0 0 60px 10px var(--coral-glow),
+      inset 0 -8px 26px rgba(150,20,10,.5),inset 0 6px 18px rgba(255,200,180,.32);}
+  .emit-btn:active{transform:scale(.96);}
+  .emit-btn .big{font-weight:700;letter-spacing:.22em;font-size:20px;}
+  .emit-btn .small{font-size:11px;letter-spacing:.28em;opacity:.85;}
+  .emit-btn .ico{filter:drop-shadow(0 2px 6px rgba(120,10,0,.4));}
+  .caption{margin-top:14px;font-size:11px;letter-spacing:.18em;text-transform:uppercase;
+    color:var(--muted2);text-align:center;}
+  .caption b{color:var(--muted);}
+
+  /* ---------- consumers ---------- */
+  .consumers-head{display:flex;align-items:center;justify-content:space-between;margin:22px 2px 10px;}
+  .consumers-head .t{font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);}
+  .consumers-head .h{font-size:11px;color:var(--muted2);}
+  .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;}
+  .node{position:relative;background:var(--panel);border:1px solid var(--border);border-radius:14px;
+    padding:14px 10px 12px;text-align:center;transition:.2s;overflow:hidden;}
+  .node .role{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted2);}
+  .node .nm{font-weight:700;font-size:14px;margin:3px 0 9px;letter-spacing:.02em;}
+  .node .cnt{font-family:var(--mono);font-size:30px;font-weight:700;line-height:1;color:var(--text);}
+  .node .cnt-lbl{font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted2);margin-top:4px;}
+  .node .off{margin-top:10px;font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--muted);cursor:pointer;user-select:none;display:inline-flex;align-items:center;gap:5px;}
+  .node .off .led{width:7px;height:7px;border-radius:50%;background:var(--emerald);box-shadow:0 0 6px var(--emerald);}
+  .node.offline{opacity:.5;border-style:dashed;}
+  .node.offline .off .led{background:var(--muted2);box-shadow:none;}
+  .node.hit{border-color:var(--coral);box-shadow:0 0 22px var(--coral-glow);}
+  .node.hit.t{border-color:var(--emerald);box-shadow:0 0 22px var(--emerald-dim);}
+  .node.miss{animation:missflash .5s;}
+  @keyframes missflash{0%,100%{border-color:var(--border);}40%{border-color:var(--amber);background:rgba(227,162,58,.08);}}
+  .node .badge{position:absolute;top:8px;right:8px;font-size:9px;letter-spacing:.1em;
+    text-transform:uppercase;padding:2px 7px;border-radius:999px;opacity:0;transition:.2s;}
+  .node .badge.show{opacity:1;}
+  .badge.got{background:var(--emerald-dim);color:var(--emerald);}
+  .badge.skip{background:var(--slot);color:var(--muted);}
+  .badge.lost{background:rgba(227,162,58,.16);color:var(--amber);}
+  .badge.wait{background:rgba(255,92,70,.16);color:var(--coral);}
+
+  /* ---------- flying tokens ---------- */
+  .token{position:fixed;width:13px;height:13px;border-radius:50%;pointer-events:none;z-index:50;
+    background:var(--coral);box-shadow:0 0 12px 2px var(--coral-glow);
+    transition:transform .5s cubic-bezier(.5,0,.3,1),opacity .5s;will-change:transform;}
+  .token.t{background:var(--emerald);box-shadow:0 0 12px 2px var(--emerald-dim);}
+  .token.drop{opacity:0;}
+
+  /* ---------- ledger ---------- */
+  .ledger{margin-top:20px;background:var(--panel);border:1px solid var(--border);border-radius:16px;
+    padding:16px 18px;display:flex;align-items:center;gap:22px;}
+  .ledger .num{font-family:var(--mono);font-size:34px;font-weight:700;line-height:1;}
+  .ledger .num.coral{color:var(--coral);} .ledger .num.eme{color:var(--emerald);} .ledger .num.amb{color:var(--amber);}
+  .ledger .l{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted2);margin-top:5px;}
+  .ledger .verdict{flex:1;font-size:12.5px;color:var(--muted);line-height:1.5;border-left:1px solid var(--border-soft);padding-left:18px;}
+  .ledger .verdict b{color:var(--text);}
+  .bars{display:flex;gap:3px;align-items:flex-end;height:30px;}
+  .bars i{width:6px;background:var(--slot);border-radius:2px;transition:.2s;}
+  .bars i.on{background:var(--emerald);box-shadow:0 0 6px var(--emerald-dim);}
+
+  /* ---------- log ---------- */
+  .log{margin-top:14px;background:#070709;border:1px solid var(--border);border-radius:12px;
+    padding:12px 15px;font-family:var(--mono);font-size:12px;max-height:140px;overflow:auto;}
+  .log div{padding:1.5px 0;color:var(--muted2);}
+  .log .hl{color:var(--text);} .log .ok{color:var(--emerald);} .log .cor{color:var(--coral);} .log .amb{color:var(--amber);}
+  .log .meta{color:var(--muted2);}
+
+  .footnote{font-size:12.5px;color:var(--muted);max-width:720px;margin:16px 2px 0;line-height:1.6;}
+  .footnote b{color:var(--coral);} .footnote .g{color:var(--emerald);}
+
+  /* ---------- bottom nav chrome ---------- */
+  .nav{position:sticky;bottom:0;margin:26px -20px 0;padding:12px 0 16px;
+    background:linear-gradient(180deg,transparent,var(--bg2) 40%);
+    display:flex;justify-content:center;gap:34px;border-top:1px solid var(--border-soft);}
+  .nav .tab{display:flex;flex-direction:column;align-items:center;gap:5px;font-size:11px;
+    letter-spacing:.05em;color:var(--muted2);}
+  .nav .tab.active{color:var(--coral);}
+  .nav .tab svg{opacity:.85;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- top bar -->
+  <div class="topbar">
+    <div class="brand">
+      <span class="mark" aria-hidden="true">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M5 17h14"/><path d="M6 17a6 6 0 0 1 12 0"/><path d="M12 5V3"/><path d="M19 9l1-1"/><path d="M5 9 4 8"/>
+        </svg>
+      </span>
+      <span class="name">OGOH</span>
+    </div>
+    <span class="pill on"><span class="dot"></span>Broker onlayn</span>
+  </div>
+
+  <div class="rule"></div>
+
+  <!-- object header -->
+  <div class="obj-tag">Lesson 08 · Hodisa dispetcher</div>
+  <div class="obj-head">
+    <div class="obj-title">Queue&nbsp;vs&nbsp;Topic</div>
+    <span class="pill" id="modePill"><span class="dot"></span><span id="modePillTxt">Point-to-point</span></span>
+  </div>
+  <div class="stats">
+    <span>HODISA <b id="sEvents">0</b></span>
+    <span>YETKAZILDI <b id="sDeliv">0</b></span>
+    <span>NODE <b>4</b></span>
+  </div>
+
+  <!-- mode toggle -->
+  <div class="seg" id="seg">
+    <button class="active q" data-mode="queue">Queue<span class="sub">competing — one handles it</span></button>
+    <button class="t" data-mode="topic">Topic<span class="sub">fan-out — everyone hears it</span></button>
+  </div>
+  <div class="mode-note" id="modeNote"></div>
+
+  <!-- dial -->
+  <div class="dial-area">
+    <svg class="sun" id="sun" width="430" height="430" aria-hidden="true"></svg>
+    <button class="emit-btn" id="emit">
+      <span class="ico" aria-hidden="true">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M5 17h14"/><path d="M6 17a6 6 0 0 1 12 0"/><path d="M12 5V3"/><path d="M19 9l1-1"/><path d="M5 9 4 8"/>
+        </svg>
+      </span>
+      <span class="big">EMIT</span>
+      <span class="small">BOSING</span>
+    </button>
+    <div class="caption" id="caption">Bitta hodisani yuboring · <b>1 hodisa → ?</b></div>
+  </div>
+
+  <!-- consumers -->
+  <div class="consumers-head">
+    <span class="t" id="consTitle">Workers · raqobat</span>
+    <span class="h" id="consHint">bittasi ishni oladi</span>
+  </div>
+  <div class="grid" id="grid"></div>
+
+  <!-- ledger -->
+  <div class="ledger">
+    <div><div class="num coral" id="lEvents">0</div><div class="l">Hodisa</div></div>
+    <div><div class="num eme" id="lDeliv">0</div><div class="l">Yetkazildi</div></div>
+    <div><div class="num amb" id="lLost">0</div><div class="l" id="lLostLbl">Yo'qoldi</div></div>
+    <div class="verdict" id="verdict"></div>
+    <div class="bars" id="bars"></div>
+  </div>
+
+  <div class="log" id="log"></div>
+
+  <p class="footnote" id="footnote"></p>
+
+  <!-- bottom nav chrome -->
+  <div class="nav">
+    <div class="tab active">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17h14"/><path d="M6 17a6 6 0 0 1 12 0"/><path d="M12 5V3"/></svg>
+      Trevoga</div>
+    <div class="tab">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M16 4a3 3 0 0 1 0 6"/><path d="M21 20a6 6 0 0 0-3-5"/></svg>
+      Aholi</div>
+    <div class="tab">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+      Tarix</div>
+    <div class="tab">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4 3 7v13l6-3 6 3 6-3V4l-6 3-6-3Z"/><path d="M9 4v13"/><path d="M15 7v13"/></svg>
+      Xarita</div>
+    <div class="tab">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg>
+      Sozlama</div>
+  </div>
+
+</div>
+
+<script>
+(() => {
+  const $ = (s)=>document.querySelector(s);
+  const NAMES = ["Hudud 1","Hudud 2","Hudud 3","Hudud 4"];
+  let mode = "queue";
+  let events=0, deliv=0, lost=0, rr=0;
+  const offline = [false,false,false,false];
+
+  // ---- build sunburst ticks ----
+  (function sun(){
+    const svg=$("#sun"), cx=215, cy=215, n=72, r1=132, r2=152;
+    let html="";
+    for(let i=0;i<n;i++){
+      const a=(i/n)*Math.PI*2 - Math.PI/2;
+      const x1=cx+Math.cos(a)*r1, y1=cy+Math.sin(a)*r1;
+      const x2=cx+Math.cos(a)*r2, y2=cy+Math.sin(a)*r2;
+      const lng=i%6===0;
+      html+=`<line x1="${x1}" y1="${y1}" x2="${cx+Math.cos(a)*(lng?r2+8:r2)}" y2="${cy+Math.sin(a)*(lng?r2+8:r2)}"
+        stroke="${lng?'#3a3a40':'#27272c'}" stroke-width="${lng?2:1.5}" />`;
+    }
+    svg.innerHTML=html;
+  })();
+
+  // ---- build consumer nodes ----
+  const grid=$("#grid");
+  NAMES.forEach((nm,i)=>{
+    const el=document.createElement("div");
+    el.className="node"; el.dataset.i=i;
+    el.innerHTML=`
+      <span class="badge" id="badge${i}"></span>
+      <div class="role" id="role${i}">worker</div>
+      <div class="nm">${nm}</div>
+      <div class="cnt" id="cnt${i}">0</div>
+      <div class="cnt-lbl">qabul qildi</div>
+      <div class="off" data-i="${i}"><span class="led"></span><span id="offtxt${i}">onlayn</span></div>`;
+    grid.appendChild(el);
+  });
+  const counts=[0,0,0,0];
+
+  grid.addEventListener("click",(e)=>{
+    const off=e.target.closest(".off"); if(!off) return;
+    const i=+off.dataset.i; offline[i]=!offline[i];
+    grid.children[i].classList.toggle("offline",offline[i]);
+    $("#offtxt"+i).textContent=offline[i]?"oflayn":"onlayn";
+    log(`<span class="meta">${NAMES[i]} — ${offline[i]?'OFLAYN':'ONLAYN'}</span>`);
+  });
+
+  // ---- mode segmented ----
+  $("#seg").addEventListener("click",(e)=>{
+    const b=e.target.closest("button"); if(!b) return;
+    mode=b.dataset.mode;
+    [...$("#seg").children].forEach(x=>x.classList.toggle("active",x===b));
+    syncMode();
+  });
+
+  function syncMode(){
+    const q = mode==="queue";
+    $("#modePillTxt").textContent = q ? "Point-to-point" : "Publish / subscribe";
+    $("#consTitle").textContent = q ? "Workers · raqobat" : "Subscribers · fan-out";
+    $("#consHint").textContent  = q ? "bittasi ishni oladi" : "hammasi xabar oladi";
+    $("#caption").innerHTML = q
+      ? `Bitta hodisani yuboring · <b>1 hodisa → 1 yetkazish</b>`
+      : `Bitta hodisani yuboring · <b>1 hodisa → 4 yetkazish</b>`;
+    $("#lLostLbl").textContent = q ? "Kutmoqda" : "Yo'qoldi";
+    $("#modeNote").innerHTML = q
+      ? `<b style="color:var(--coral)">QUEUE</b> — workers compete; each event goes to <b style="color:var(--text)">exactly one</b>. Adding nodes makes work go <i>faster</i>.`
+      : `<b style="color:var(--emerald)">TOPIC</b> — every subscriber gets <b style="color:var(--text)">every</b> event. Adding nodes adds a <i>reaction</i>, not speed.`;
+    NAMES.forEach((_,i)=>$("#role"+i).textContent = q ? "worker" : "subscriber");
+    renderVerdict();
+  }
+
+  // ---- emit ----
+  $("#emit").addEventListener("click",()=>{ mode==="queue"?emitQueue():emitTopic(); });
+
+  function btnCenter(){ const r=$("#emit").getBoundingClientRect(); return {x:r.left+r.width/2,y:r.top+r.height/2}; }
+  function nodeCenter(i){ const r=grid.children[i].getBoundingClientRect(); return {x:r.left+r.width/2,y:r.top+28}; }
+
+  function fly(i,topic,onArrive){
+    const s=btnCenter(), tok=document.createElement("div");
+    tok.className="token"+(topic?" t":"");
+    tok.style.left=(s.x-6.5)+"px"; tok.style.top=(s.y-6.5)+"px";
+    document.body.appendChild(tok);
+    const d=nodeCenter(i);
+    requestAnimationFrame(()=>{ tok.style.transform=`translate(${d.x-s.x}px,${d.y-s.y}px)`; });
+    setTimeout(()=>{ onArrive&&onArrive(); tok.remove(); },520);
+  }
+  function flyDrop(){ // event with no live subscriber → falls away
+    const s=btnCenter(), tok=document.createElement("div");
+    tok.className="token t"; tok.style.left=(s.x-6.5)+"px"; tok.style.top=(s.y-6.5)+"px";
+    document.body.appendChild(tok);
+    requestAnimationFrame(()=>{ tok.style.transform=`translate(${(Math.random()*120-60)}px,140px)`; tok.classList.add("drop"); });
+    setTimeout(()=>tok.remove(),520);
+  }
+
+  function pulse(){ const b=$("#emit"); b.animate([{boxShadow:getComputedStyle(b).boxShadow},{transform:'scale(1.04)'},{transform:'scale(1)'}],{duration:260}); }
+
+  function emitQueue(){
+    events++; pulse();
+    const liveIdx=[0,1,2,3].filter(i=>!offline[i]);
+    if(liveIdx.length===0){
+      lost++; // nothing online → job WAITS (durable), not lost
+      log(`<span class="cor">▶ hodisa #${events}</span> — barcha worker oflayn → <span class="hl">navbatda kutmoqda</span> (yo'qolmaydi)`);
+      flyDrop();
+      flash(rrNext(true),"wait","KUTMOQDA");
+      update(); return;
+    }
+    // round-robin among ONLINE workers (competing consumers)
+    let i = liveIdx[rr % liveIdx.length]; rr++;
+    deliv++; counts[i]++;
+    log(`<span class="cor">▶ hodisa #${events}</span> → <span class="hl">${NAMES[i]}</span> ishladi · qolganlari bo'sh`);
+    fly(i,false,()=>{ $("#cnt"+i).textContent=counts[i]; hit(i,false); flash(i,"got","ISHLADI"); update(); });
+    // show the others explicitly skipped
+    liveIdx.filter(x=>x!==i).forEach(x=>flash(x,"skip","BO'SH"));
+  }
+
+  function emitTopic(){
+    events++; pulse();
+    const live=[0,1,2,3].filter(i=>!offline[i]);
+    log(`<span class="ok">▶ hodisa #${events}</span> — broadcast → <span class="hl">${live.length} ta subscriber</span>${live.length<4?` · ${4-live.length} oflayn missed`:''}`);
+    [0,1,2,3].forEach(i=>{
+      if(offline[i]){ lost++; flash(i,"lost","MISSED"); grid.children[i].classList.add("miss");
+        setTimeout(()=>grid.children[i].classList.remove("miss"),500); }
+      else { deliv++; counts[i]++; fly(i,true,()=>{ $("#cnt"+i).textContent=counts[i]; hit(i,true); flash(i,"got","OLDI"); update(); }); }
+    });
+    if(live.length===0) flyDrop();
+    update();
+  }
+
+  let rrtmp=0; function rrNext(){ return rrtmp++ %4; }
+
+  function hit(i,topic){ const el=grid.children[i]; el.classList.add("hit"); el.classList.toggle("t",topic);
+    setTimeout(()=>el.classList.remove("hit"),420); }
+  function flash(i,kind,txt){ const b=$("#badge"+i); b.className="badge "+kind+" show"; b.textContent=txt;
+    setTimeout(()=>b.classList.remove("show"),900); }
+
+  function update(){
+    $("#sEvents").textContent=events; $("#sDeliv").textContent=deliv;
+    $("#lEvents").textContent=events; $("#lDeliv").textContent=deliv; $("#lLost").textContent=lost;
+    const bars=$("#bars"); if(bars.children.length===0){ for(let i=0;i<6;i++)bars.appendChild(document.createElement("i")); }
+    const ratio = events? deliv/events : 0;
+    const onN = Math.max(0,Math.min(6,Math.round(ratio/4*6)));
+    [...bars.children].forEach((b,i)=>b.classList.toggle("on",i<onN));
+    renderVerdict();
+  }
+
+  function renderVerdict(){
+    const v=$("#verdict");
+    if(events===0){ v.innerHTML = mode==="queue"
+      ? `Press <b>EMIT</b>. In a queue, one event is handled by <b>one</b> worker — the rest stay idle.`
+      : `Press <b>EMIT</b>. In a topic, one event reaches <b>every</b> subscriber at once.`; return; }
+    const r=(deliv/events).toFixed(2);
+    if(mode==="queue"){
+      v.innerHTML=`<b>${events} events → ${deliv} deliveries</b> (≈${r}/event). Competing consumers: each event handled <b>once</b>. An offline worker just means its share is picked up by another — work is <b>never lost</b>, it waits.`;
+    } else {
+      v.innerHTML=`<b>${events} events → ${deliv} deliveries</b> (≈${r}/event). Fan-out: every live subscriber gets every event. But an <b>offline</b> subscriber <b style="color:var(--amber)">misses it forever</b> — ${lost} missed. Topics don't wait.`;
+    }
+  }
+
+  let logEl=$("#log");
+  function log(html){ const d=document.createElement("div"); d.innerHTML=html; logEl.prepend(d);
+    while(logEl.children.length>40) logEl.lastChild.remove(); }
+
+  function setFoot(){ $("#footnote").innerHTML =
+    `<b>Queue</b> = "who <i>does</i> this?" — point-to-point, competing consumers, durable (offline → waits). `+
+    `<span class="g">Topic</span> = "who needs to <i>know</i>?" — fan-out, every subscriber, ephemeral (offline → missed). `+
+    `Toggle a node <b>oflayn</b> and emit in each mode to feel the difference: a queue protects the work, a topic does not.`; }
+
+  syncMode(); update(); setFoot();
+})();
+</script>
+</body>
+</html>

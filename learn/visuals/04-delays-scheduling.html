@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lesson 04 — Delays & Scheduling (OGOH dispatch console)</title>
+<style>
+  :root{
+    --bg:#0b0b0d; --bg2:#070708;
+    --panel:#141416; --panel2:#1a1a1d; --slot:#202024;
+    --border:#2a2a2f; --border-soft:rgba(255,255,255,.06);
+    --text:#ededed; --muted:#7c7c83; --muted2:#55555b;
+    --coral:#ff6c5a; --coral-deep:#e63c2c; --coral-glow:rgba(255,92,70,.40);
+    --emerald:#37d39a; --emerald-dim:rgba(55,211,154,.14);
+    --amber:#e3a23a; --amber-dim:rgba(227,162,58,.14);
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;}
+  body{
+    background:
+      repeating-linear-gradient(45deg,rgba(255,255,255,.013) 0 2px,transparent 2px 11px),
+      radial-gradient(120% 80% at 50% -10%,#15151a 0%,var(--bg) 55%,var(--bg2) 100%);
+    color:var(--text); font:14px/1.55 var(--sans);
+    min-height:100vh; padding:22px 20px 0; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:760px;margin:0 auto;}
+
+  /* ---------- top bar ---------- */
+  .topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;}
+  .brand{display:flex;align-items:center;gap:10px;}
+  .brand .mark{color:var(--coral);display:flex;}
+  .brand .name{font-weight:700;letter-spacing:.34em;font-size:15px;}
+  .pill{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border);
+    background:var(--panel);border-radius:999px;padding:6px 13px;font-size:11px;
+    letter-spacing:.16em;text-transform:uppercase;color:var(--muted);}
+  .pill .dot{width:7px;height:7px;border-radius:50%;background:var(--muted2);}
+  .pill.on{color:var(--emerald);border-color:rgba(55,211,154,.32);}
+  .pill.on .dot{background:var(--emerald);box-shadow:0 0 8px var(--emerald);}
+  .rule{height:1px;background:var(--border-soft);margin:14px 0 16px;}
+
+  /* ---------- object header ---------- */
+  .obj-tag{font-size:11px;letter-spacing:.2em;color:var(--muted2);text-transform:uppercase;margin-bottom:4px;}
+  .obj-head{display:flex;align-items:center;justify-content:space-between;gap:12px;}
+  .obj-title{font-size:25px;font-weight:700;letter-spacing:-.01em;}
+  .clock{font-family:var(--mono);font-size:12px;letter-spacing:.14em;color:var(--muted);}
+  .clock b{color:var(--coral);}
+
+  /* ---------- segmented ---------- */
+  .seg{display:flex;gap:6px;background:var(--panel);border:1px solid var(--border);
+    border-radius:12px;padding:5px;margin:18px 0 6px;}
+  .seg button{flex:1;border:0;background:transparent;color:var(--muted);cursor:pointer;
+    padding:11px 10px;border-radius:8px;font:inherit;font-size:12.5px;letter-spacing:.12em;
+    text-transform:uppercase;font-weight:600;transition:.18s;}
+  .seg button .sub{display:block;font-size:10px;letter-spacing:.05em;text-transform:none;
+    color:var(--muted2);font-weight:400;margin-top:2px;}
+  .seg button.active{background:var(--slot);color:var(--coral);box-shadow:inset 0 0 0 1px var(--border);}
+  .mode-note{font-size:12.5px;color:var(--muted);min-height:18px;margin:2px 2px 0;}
+  .mode-note b{color:var(--coral);} .mode-note .g{color:var(--emerald);}
+
+  /* ---------- controls row ---------- */
+  .controls{display:flex;align-items:center;gap:16px;margin:16px 2px 4px;flex-wrap:wrap;}
+  .ctl{display:flex;flex-direction:column;gap:7px;}
+  .ctl .cl{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted2);}
+  .ctl .val{font-family:var(--mono);color:var(--coral);font-weight:700;}
+  input[type=range]{-webkit-appearance:none;appearance:none;width:230px;height:4px;border-radius:3px;
+    background:var(--slot);outline:none;}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;
+    background:var(--coral);box-shadow:0 0 10px var(--coral-glow);cursor:pointer;}
+  input[type=range]::-moz-range-thumb{width:16px;height:16px;border:0;border-radius:50%;
+    background:var(--coral);box-shadow:0 0 10px var(--coral-glow);cursor:pointer;}
+  .btn{background:var(--coral);color:#2a0a05;border:0;border-radius:10px;padding:11px 20px;
+    font:inherit;font-weight:700;letter-spacing:.04em;cursor:pointer;}
+  .btn:active{transform:scale(.97);}
+  .btn.sec{background:var(--slot);color:var(--text);border:1px solid var(--border);}
+  .toggle{display:inline-flex;align-items:center;gap:9px;cursor:pointer;user-select:none;}
+  .toggle .sw{width:48px;height:26px;border-radius:999px;background:var(--slot);border:1px solid var(--border);
+    position:relative;transition:.2s;}
+  .toggle .sw::after{content:"";position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;
+    background:var(--muted2);transition:.2s;}
+  .toggle.on .sw{background:rgba(255,92,70,.22);border-color:var(--coral);}
+  .toggle.on .sw::after{left:24px;background:var(--coral);box-shadow:0 0 10px var(--coral-glow);}
+  .toggle .tx{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);}
+  .toggle.on .tx{color:var(--coral);}
+
+  /* ---------- dial ---------- */
+  .dial-area{position:relative;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;padding:24px 0 6px;}
+  .sun{position:absolute;top:38px;left:50%;transform:translateX(-50%);pointer-events:none;}
+  .sweep{position:absolute;top:38px;left:50%;transform:translateX(-50%);pointer-events:none;opacity:0;transition:opacity .3s;}
+  .sweep.on{opacity:1;}
+  .dial{position:relative;width:210px;height:210px;border-radius:50%;border:0;
+    background:radial-gradient(circle at 50% 38%,#ff8a72 0%,var(--coral) 42%,var(--coral-deep) 100%);
+    box-shadow:0 0 0 1px rgba(255,120,90,.5),0 0 46px 6px var(--coral-glow),
+      inset 0 -8px 26px rgba(150,20,10,.5),inset 0 6px 18px rgba(255,200,180,.32);
+    color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;}
+  .dial .ico{filter:drop-shadow(0 2px 6px rgba(120,10,0,.4));}
+  .dial .big{font-weight:700;letter-spacing:.16em;font-size:18px;}
+  .dial .small{font-size:11px;letter-spacing:.26em;opacity:.85;}
+  .caption{margin-top:14px;font-size:11px;letter-spacing:.18em;text-transform:uppercase;
+    color:var(--muted2);text-align:center;}
+  .caption b{color:var(--muted);}
+
+  /* ---------- lanes ---------- */
+  .lanes{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:10px;margin:20px 2px 0;}
+  .lane{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:12px 12px 14px;min-height:120px;}
+  .lane .lh{display:flex;align-items:center;justify-content:space-between;margin-bottom:9px;}
+  .lane .lt{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);}
+  .lane.delayed .lt{color:var(--muted);}
+  .lane.waiting .lt{color:var(--coral);}
+  .lane.done .lt{color:var(--emerald);}
+  .lane .lsub{font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted2);}
+  .lane .body{display:flex;flex-direction:column;gap:7px;}
+  .lane.delayed{border-style:dashed;}
+
+  .job{display:flex;flex-direction:column;gap:5px;background:var(--slot);border:1px solid var(--border);
+    border-radius:9px;padding:7px 9px;animation:pop .25s ease;}
+  @keyframes pop{from{transform:scale(.85);opacity:0;}to{transform:scale(1);opacity:1;}}
+  .job .jtop{display:flex;align-items:center;justify-content:space-between;font-family:var(--mono);font-size:11px;}
+  .job .jid{color:var(--text);} .job .jt{color:var(--muted2);}
+  .job.done{border-color:rgba(55,211,154,.4);} .job.done .jid{color:var(--emerald);}
+  .job.waiting{border-color:rgba(255,92,70,.4);} .job.waiting .jid{color:var(--coral);}
+  .ring{width:100%;height:4px;background:#0c0c0e;border-radius:3px;overflow:hidden;}
+  .ring i{display:block;height:100%;width:100%;background:linear-gradient(90deg,var(--coral),var(--coral-deep));
+    border-radius:3px;transform-origin:left;}
+  .empty{font-size:11px;color:var(--muted2);font-style:italic;padding:6px 2px;}
+
+  /* ---------- ledger ---------- */
+  .ledger{margin-top:20px;background:var(--panel);border:1px solid var(--border);border-radius:16px;
+    padding:16px 18px;display:flex;align-items:center;gap:22px;}
+  .ledger .num{font-family:var(--mono);font-size:34px;font-weight:700;line-height:1;}
+  .ledger .num.coral{color:var(--coral);} .ledger .num.eme{color:var(--emerald);} .ledger .num.amb{color:var(--amber);}
+  .ledger .l{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted2);margin-top:5px;}
+  .ledger .verdict{flex:1;font-size:12.5px;color:var(--muted);line-height:1.5;border-left:1px solid var(--border-soft);padding-left:18px;}
+  .ledger .verdict b{color:var(--text);}
+
+  .footnote{font-size:12.5px;color:var(--muted);max-width:720px;margin:16px 2px 0;line-height:1.6;}
+  .footnote b{color:var(--coral);} .footnote .g{color:var(--emerald);}
+
+  /* ---------- bottom nav chrome ---------- */
+  .nav{position:sticky;bottom:0;margin:26px -20px 0;padding:12px 0 16px;
+    background:linear-gradient(180deg,transparent,var(--bg2) 40%);
+    display:flex;justify-content:center;gap:34px;border-top:1px solid var(--border-soft);}
+  .nav .tab{display:flex;flex-direction:column;align-items:center;gap:5px;font-size:11px;
+    letter-spacing:.05em;color:var(--muted2);}
+  .nav .tab.active{color:var(--coral);}
+  .nav .tab svg{opacity:.85;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- top bar -->
+  <div class="topbar">
+    <div class="brand">
+      <span class="mark" aria-hidden="true">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17h14"/><path d="M6 17a6 6 0 0 1 12 0"/><path d="M12 5V3"/><path d="M19 9l1-1"/><path d="M5 9 4 8"/></svg>
+      </span>
+      <span class="name">OGOH</span>
+    </div>
+    <span class="pill on"><span class="dot"></span>Broker onlayn</span>
+  </div>
+
+  <div class="rule"></div>
+
+  <!-- object header -->
+  <div class="obj-tag">Lesson 04 · Kechikish va jadval</div>
+  <div class="obj-head">
+    <div class="obj-title">Delays&nbsp;&amp;&nbsp;Scheduling</div>
+    <span class="clock">SOAT <b id="clock">00:00</b></span>
+  </div>
+
+  <!-- mode toggle -->
+  <div class="seg" id="seg">
+    <button class="active" data-mode="delayed">Kechikkan<span class="sub">delayed — run once, later</span></button>
+    <button data-mode="repeat">Takroriy<span class="sub">repeatable — cron-like ticks</span></button>
+  </div>
+  <div class="mode-note" id="modeNote"></div>
+
+  <!-- controls -->
+  <div class="controls" id="controls"></div>
+
+  <!-- dial -->
+  <div class="dial-area">
+    <svg class="sun" id="sun" width="300" height="300" aria-hidden="true"></svg>
+    <svg class="sweep" id="sweep" width="300" height="300" aria-hidden="true">
+      <line x1="150" y1="150" x2="150" y2="22" stroke="var(--coral)" stroke-width="2.5" stroke-linecap="round"/>
+      <circle cx="150" cy="22" r="4" fill="var(--coral)"/>
+    </svg>
+    <div class="dial" id="dial">
+      <span class="ico" aria-hidden="true">
+        <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+      </span>
+      <span class="big" id="dialBig">+5s</span>
+      <span class="small" id="dialSmall">KECHIKISH</span>
+    </div>
+    <div class="caption" id="caption"></div>
+  </div>
+
+  <!-- lanes -->
+  <div class="lanes">
+    <div class="lane delayed">
+      <div class="lh"><span class="lt">Kechikkan</span><span class="lsub">delayed-set</span></div>
+      <div class="body" id="laneDelayed"></div>
+    </div>
+    <div class="lane waiting">
+      <div class="lh"><span class="lt">Navbat</span><span class="lsub">waiting → active</span></div>
+      <div class="body" id="laneWaiting"></div>
+    </div>
+    <div class="lane done">
+      <div class="lh"><span class="lt">Bajarildi</span><span class="lsub">completed</span></div>
+      <div class="body" id="laneDone"></div>
+    </div>
+  </div>
+
+  <!-- ledger -->
+  <div class="ledger">
+    <div><div class="num" id="lDelayed">0</div><div class="l">Kechikkan</div></div>
+    <div><div class="num eme" id="lDone">0</div><div class="l">Bajarildi</div></div>
+    <div><div class="num coral" id="lTick">0</div><div class="l">Tick</div></div>
+    <div class="verdict" id="verdict"></div>
+  </div>
+
+  <p class="footnote" id="footnote"></p>
+
+  <!-- bottom nav chrome -->
+  <div class="nav">
+    <div class="tab">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17h14"/><path d="M6 17a6 6 0 0 1 12 0"/><path d="M12 5V3"/></svg>
+      Trevoga</div>
+    <div class="tab">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M16 4a3 3 0 0 1 0 6"/><path d="M21 20a6 6 0 0 0-3-5"/></svg>
+      Aholi</div>
+    <div class="tab active">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+      Tarix</div>
+    <div class="tab">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4 3 7v13l6-3 6 3 6-3V4l-6 3-6-3Z"/><path d="M9 4v13"/><path d="M15 7v13"/></svg>
+      Xarita</div>
+    <div class="tab">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg>
+      Sozlama</div>
+  </div>
+
+</div>
+
+<script>
+(() => {
+  const $ = (s)=>document.querySelector(s);
+  let mode = "delayed";
+  let delaySec = 5, intervalSec = 3, running = false;
+  let delayedCnt = 0, doneCnt = 0, tickCnt = 0;
+  let jobSeq = 0;
+  const jobs = [];          // {id,el,lane,promoteAt}
+  const startMs = Date.now();
+
+  // ---- sunburst tick-ring (from 08's sun()) ----
+  (function sun(){
+    const svg=$("#sun"), cx=150, cy=150, n=60, r1=92, r2=108;
+    let html="";
+    for(let i=0;i<n;i++){
+      const a=(i/n)*Math.PI*2 - Math.PI/2;
+      const x1=cx+Math.cos(a)*r1, y1=cy+Math.sin(a)*r1;
+      const lng=i%5===0;
+      html+=`<line x1="${x1}" y1="${y1}" x2="${cx+Math.cos(a)*(lng?r2+8:r2)}" y2="${cy+Math.sin(a)*(lng?r2+8:r2)}"
+        stroke="${lng?'#3a3a40':'#27272c'}" stroke-width="${lng?2:1.5}" />`;
+    }
+    svg.innerHTML=html;
+  })();
+
+  function pulse(){ const b=$("#dial"); b.animate([{transform:'scale(1)'},{transform:'scale(1.05)'},{transform:'scale(1)'}],{duration:300}); }
+
+  // ---------- controls ----------
+  function renderControls(){
+    const c=$("#controls");
+    if(mode==="delayed"){
+      c.innerHTML=`
+        <div class="ctl">
+          <span class="cl">Kechikish · delay <span class="val" id="dVal">${delaySec}s</span></span>
+          <input type="range" id="delayR" min="2" max="10" step="1" value="${delaySec}">
+        </div>
+        <button class="btn" id="schedBtn">REJALASHTIRISH / SCHEDULE</button>`;
+      $("#delayR").addEventListener("input",e=>{ delaySec=+e.target.value;
+        $("#dVal").textContent=delaySec+"s"; $("#dialBig").textContent="+"+delaySec+"s"; });
+      $("#schedBtn").addEventListener("click",schedule);
+    } else {
+      c.innerHTML=`
+        <div class="ctl">
+          <span class="cl">Interval · every <span class="val" id="iVal">${intervalSec}s</span></span>
+          <input type="range" id="intR" min="2" max="8" step="1" value="${intervalSec}" ${running?'disabled':''}>
+        </div>
+        <div class="toggle ${running?'on':''}" id="tgl"><span class="sw"></span><span class="tx">${running?'YONIQ / ON':"O'CHIQ / OFF"}</span></div>`;
+      $("#intR").addEventListener("input",e=>{ intervalSec=+e.target.value; $("#iVal").textContent=intervalSec+"s"; syncDial(); });
+      $("#tgl").addEventListener("click",toggleRepeat);
+    }
+  }
+
+  function syncDial(){
+    if(mode==="delayed"){
+      $("#dialBig").textContent="+"+delaySec+"s"; $("#dialSmall").textContent="KECHIKISH";
+    } else {
+      $("#dialBig").textContent="har "+intervalSec+"s"; $("#dialSmall").textContent=running?"TIKLAB TURIBDI":"TO'XTAB TURIBDI";
+    }
+  }
+
+  // ---------- segmented ----------
+  $("#seg").addEventListener("click",(e)=>{
+    const b=e.target.closest("button"); if(!b||b.dataset.mode===mode) return;
+    if(running) toggleRepeat();
+    mode=b.dataset.mode;
+    [...$("#seg").children].forEach(x=>x.classList.toggle("active",x===b));
+    renderControls(); syncDial(); syncMode();
+  });
+
+  function syncMode(){
+    if(mode==="delayed"){
+      $("#caption").innerHTML=`Bir martalik taymer · <b>delayed → waiting → completed</b>`;
+      $("#modeNote").innerHTML=`<b>KECHIKKAN</b> — a one-shot job parks in the Redis <b>delayed</b> set. It consumes <b style="color:var(--text)">no worker</b> while it waits; at its due time it is <i>promoted</i> to waiting and runs.`;
+    } else {
+      $("#caption").innerHTML=`Avtomatik takror · <b>har ${intervalSec}s / every ${intervalSec}s</b>`;
+      $("#modeNote").innerHTML=`<span class="g">TAKRORIY</span> — a scheduler stamps out a fresh job every interval, automatically. The durable replacement for <b>setInterval</b>; it lives in Redis and survives restarts.`;
+    }
+    renderVerdict();
+  }
+
+  // ---------- DELAYED ----------
+  function schedule(){
+    pulse();
+    const id="rem-"+(++jobSeq);
+    const dueIn=delaySec*1000;
+    const el=document.createElement("div");
+    el.className="job";
+    el.innerHTML=`<div class="jtop"><span class="jid">${id}</span><span class="jt" data-cd>${delaySec.toFixed(1)}s</span></div>
+      <div class="ring"><i></i></div>`;
+    $("#laneDelayed").appendChild(el);
+    clearEmpty("#laneDelayed");
+    const ring=el.querySelector(".ring i");
+    const j={id,el,ring,lane:"delayed",createdAt:Date.now(),promoteAt:Date.now()+dueIn,dur:dueIn};
+    jobs.push(j); delayedCnt++; update();
+  }
+
+  function promote(j){
+    j.lane="waiting"; delayedCnt--;
+    j.el.classList.add("waiting");
+    j.el.querySelector(".ring").remove();
+    j.el.querySelector("[data-cd]").textContent="NAVBAT";
+    $("#laneWaiting").appendChild(j.el); clearEmpty("#laneWaiting"); markEmpty("#laneDelayed");
+    update();
+    // brief "active" then complete
+    setTimeout(()=>complete(j), 650);
+  }
+
+  function complete(j){
+    j.lane="done"; doneCnt++;
+    j.el.classList.remove("waiting"); j.el.classList.add("done");
+    j.el.querySelector("[data-cd]").textContent="OK";
+    $("#laneDone").appendChild(j.el); clearEmpty("#laneDone"); markEmpty("#laneWaiting");
+    while($("#laneDone").children.length>5) $("#laneDone").removeChild($("#laneDone").firstElementChild);
+    update();
+  }
+
+  // ---------- REPEATABLE ----------
+  function toggleRepeat(){
+    running=!running;
+    $("#sweep").classList.toggle("on",running);
+    const tgl=$("#tgl"); if(tgl){ tgl.classList.toggle("on",running);
+      tgl.querySelector(".tx").textContent=running?'YONIQ / ON':"O'CHIQ / OFF"; }
+    const ir=$("#intR"); if(ir) ir.disabled=running;
+    if(running){ lastTick=Date.now(); $("#dial").animate([{filter:'brightness(1)'}],{duration:1}); }
+    syncDial(); syncMode();
+  }
+
+  let lastTick=0, sweepAng=0;
+  function emitTick(){
+    tickCnt++;
+    const id="beat-"+tickCnt;
+    const el=document.createElement("div");
+    el.className="job done";
+    el.innerHTML=`<div class="jtop"><span class="jid">${id}</span><span class="jt">tick</span></div>`;
+    $("#laneDone").appendChild(el); clearEmpty("#laneDone");
+    while($("#laneDone").children.length>5) $("#laneDone").removeChild($("#laneDone").firstElementChild);
+    pulse(); update();
+  }
+
+  // ---------- helpers ----------
+  function markEmpty(sel){ const l=$(sel); if(l.children.length===0){
+    const e=document.createElement("div"); e.className="empty"; e.textContent="—"; l.appendChild(e); } }
+  function clearEmpty(sel){ const e=$(sel).querySelector(".empty"); if(e) e.remove(); }
+
+  function update(){
+    $("#lDelayed").textContent=delayedCnt;
+    $("#lDone").textContent=doneCnt+tickCnt;
+    $("#lTick").textContent=tickCnt;
+    renderVerdict();
+  }
+
+  function renderVerdict(){
+    const v=$("#verdict");
+    if(mode==="delayed"){
+      if(doneCnt===0 && delayedCnt===0){
+        v.innerHTML=`Set a delay and press <b>SCHEDULE</b>. The job lands in <b>delayed</b> and waits — <b>no worker is touched</b> until it is due.`;
+      } else {
+        v.innerHTML=`<b>${delayedCnt} delayed</b>, <b>${doneCnt} completed</b>. A delayed job sits in the <b>delayed</b> set scored by due time — it consumes <b>no worker</b>. At zero it is promoted <b>delayed→waiting</b>, then a worker runs it. Promotions fire in <b>time order</b>, not schedule order.`;
+      }
+    } else {
+      v.innerHTML=`<b>${tickCnt} ticks</b> emitted${running?` — ticking every <b>${intervalSec}s</b>`:` · currently <b>OFF</b>`}. A scheduler produces a <b>fresh job per interval</b> with a new id. Toggle OFF to stop; the cadence is the durable equivalent of <b>setInterval</b>.`;
+    }
+  }
+
+  // ---------- main loop ----------
+  function loop(){
+    const now=Date.now();
+    // clock readout
+    const t=(now-startMs)/1000;
+    const mm=String(Math.floor(t/60)).padStart(2,"0");
+    const ss=String(Math.floor(t%60)).padStart(2,"0");
+    $("#clock").textContent=mm+":"+ss;
+
+    // delayed countdowns
+    for(const j of jobs){
+      if(j.lane!=="delayed") continue;
+      const rem=j.promoteAt-now;
+      if(rem<=0){ promote(j); }
+      else {
+        const frac=Math.max(0,rem/j.dur);
+        if(j.ring) j.ring.style.transform=`scaleX(${frac})`;
+        const cd=j.el.querySelector("[data-cd]"); if(cd) cd.textContent=(rem/1000).toFixed(1)+"s";
+      }
+    }
+
+    // repeatable sweep + ticks
+    if(running){
+      sweepAng=((now-lastTick)/(intervalSec*1000))*360;
+      $("#sweep").style.transform=`translateX(-50%) rotate(${sweepAng}deg)`;
+      if(now-lastTick>=intervalSec*1000){ lastTick=now; emitTick(); }
+    } else {
+      $("#sweep").style.transform=`translateX(-50%) rotate(0deg)`;
+    }
+    requestAnimationFrame(loop);
+  }
+
+  function setFoot(){ $("#footnote").innerHTML=
+    `A <b>delayed</b> job is a one-shot timer that lives in Redis, not your process — it waits in the delayed set consuming nothing, then is promoted to <b>waiting</b> at its due moment. `+
+    `A <span class="g">repeatable / cron</span> job is the durable replacement for <b>setInterval</b>: it stamps out a fresh job every tick and <span class="g">survives restarts</span>, so a server reboot never loses the schedule.`; }
+
+  // init
+  ["#laneDelayed","#laneWaiting","#laneDone"].forEach(markEmpty);
+  renderControls(); syncDial(); syncMode(); update(); setFoot(); loop();
+})();
+</script>
+</body>
+</html>

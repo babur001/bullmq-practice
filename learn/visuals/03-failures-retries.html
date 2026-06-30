@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lesson 03 — Failures & Retries (OGOH dispatch console)</title>
+<style>
+  :root{
+    --bg:#0b0b0d; --bg2:#070708;
+    --panel:#141416; --panel2:#1a1a1d; --slot:#202024;
+    --border:#2a2a2f; --border-soft:rgba(255,255,255,.06);
+    --text:#ededed; --muted:#7c7c83; --muted2:#55555b;
+    --coral:#ff6c5a; --coral-deep:#e63c2c; --coral-glow:rgba(255,92,70,.40);
+    --emerald:#37d39a; --emerald-dim:rgba(55,211,154,.14);
+    --amber:#e3a23a; --amber-dim:rgba(227,162,58,.14);
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;}
+  body{
+    background:
+      repeating-linear-gradient(45deg,rgba(255,255,255,.013) 0 2px,transparent 2px 11px),
+      radial-gradient(120% 80% at 50% -10%,#15151a 0%,var(--bg) 55%,var(--bg2) 100%);
+    color:var(--text); font:14px/1.55 var(--sans);
+    min-height:100vh; padding:22px 20px 0; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:760px;margin:0 auto;}
+
+  /* ---------- top bar ---------- */
+  .topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;}
+  .brand{display:flex;align-items:center;gap:10px;}
+  .brand .mark{color:var(--coral);display:flex;}
+  .brand .name{font-weight:700;letter-spacing:.34em;font-size:15px;}
+  .pill{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border);
+    background:var(--panel);border-radius:999px;padding:6px 13px;font-size:11px;
+    letter-spacing:.16em;text-transform:uppercase;color:var(--muted);}
+  .pill .dot{width:7px;height:7px;border-radius:50%;background:var(--muted2);}
+  .pill.on{color:var(--emerald);border-color:rgba(55,211,154,.32);}
+  .pill.on .dot{background:var(--emerald);box-shadow:0 0 8px var(--emerald);}
+  .rule{height:1px;background:var(--border-soft);margin:14px 0 16px;}
+
+  /* ---------- object header ---------- */
+  .obj-tag{font-size:11px;letter-spacing:.2em;color:var(--muted2);text-transform:uppercase;margin-bottom:4px;}
+  .obj-head{display:flex;align-items:center;justify-content:space-between;gap:12px;}
+  .obj-title{font-size:25px;font-weight:700;letter-spacing:-.01em;}
+
+  /* ---------- controls ---------- */
+  .controls{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:20px 0 4px;}
+  .ctl{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:13px 15px;}
+  .ctl .lab{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted2);
+    display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;}
+  .ctl .lab b{font-family:var(--mono);font-size:16px;color:var(--coral);letter-spacing:0;}
+  .ctl .lab.eme b{color:var(--emerald);}
+  input[type=range]{-webkit-appearance:none;width:100%;height:4px;border-radius:4px;
+    background:var(--slot);outline:none;margin:6px 0 2px;}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;
+    background:var(--coral);box-shadow:0 0 10px var(--coral-glow);cursor:pointer;border:0;}
+  input[type=range].eme::-webkit-slider-thumb{background:var(--emerald);box-shadow:0 0 10px var(--emerald-dim);}
+  input[type=range]:disabled::-webkit-slider-thumb{background:var(--muted2);box-shadow:none;cursor:not-allowed;}
+  .scale{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--muted2);}
+
+  /* segmented control */
+  .seg{display:flex;gap:6px;background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:5px;}
+  .seg button{flex:1;border:0;background:transparent;color:var(--muted);cursor:pointer;padding:10px 8px;
+    border-radius:8px;font:inherit;font-size:12px;letter-spacing:.1em;text-transform:uppercase;font-weight:600;transition:.18s;}
+  .seg button .sub{display:block;font-size:9px;letter-spacing:.03em;text-transform:none;color:var(--muted2);font-weight:400;margin-top:2px;}
+  .seg button.active{background:var(--slot);color:var(--amber);box-shadow:inset 0 0 0 1px var(--border);}
+
+  .toggle{display:inline-flex;align-items:center;gap:9px;cursor:pointer;user-select:none;margin-top:4px;}
+  .toggle .sw{width:38px;height:21px;border-radius:999px;background:var(--slot);border:1px solid var(--border);position:relative;transition:.18s;}
+  .toggle .sw::after{content:"";position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:50%;background:var(--muted);transition:.18s;}
+  .toggle.on .sw{background:var(--amber-dim);border-color:rgba(227,162,58,.4);}
+  .toggle.on .sw::after{left:19px;background:var(--amber);box-shadow:0 0 8px var(--amber);}
+  .toggle .tt{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);}
+  .toggle.on .tt{color:var(--amber);}
+
+  /* run button */
+  .runrow{display:flex;align-items:center;gap:16px;margin:18px 0 6px;}
+  .btn{background:var(--coral);color:#2a0a05;border:0;border-radius:10px;padding:12px 22px;
+    font:inherit;font-weight:700;letter-spacing:.08em;cursor:pointer;text-transform:uppercase;font-size:13px;
+    box-shadow:0 0 26px var(--coral-glow);transition:transform .08s,box-shadow .2s;}
+  .btn:active{transform:scale(.97);}
+  .btn:disabled{opacity:.45;cursor:not-allowed;box-shadow:none;}
+  .runrow .cfg{font-family:var(--mono);font-size:11.5px;color:var(--muted);line-height:1.5;}
+  .runrow .cfg b{color:var(--text);}
+
+  /* ---------- timeline ---------- */
+  .tl-head{display:flex;align-items:center;justify-content:space-between;margin:18px 2px 9px;}
+  .tl-head .t{font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);}
+  .tl-head .h{font-size:11px;color:var(--muted2);font-family:var(--mono);}
+  .timeline{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:18px 16px;
+    min-height:96px;display:flex;align-items:center;gap:6px;overflow-x:auto;}
+  .tl-empty{color:var(--muted2);font-size:12.5px;letter-spacing:.04em;margin:auto;}
+
+  .att{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:7px;padding:4px 2px;}
+  .att .chip{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+    width:60px;height:58px;border-radius:12px;border:1px solid var(--border);background:var(--slot);
+    font-family:var(--mono);transition:.25s;position:relative;}
+  .att .chip .n{font-size:10px;letter-spacing:.1em;color:var(--muted2);text-transform:uppercase;}
+  .att .chip .ic{font-size:20px;line-height:1;font-weight:700;}
+  .att .chip.run{border-color:var(--coral);box-shadow:0 0 18px var(--coral-glow);}
+  .att .chip.run .ic{color:var(--coral);animation:spin 1s linear infinite;}
+  .att .chip.fail{border-color:rgba(227,162,58,.5);background:var(--amber-dim);}
+  .att .chip.fail .ic{color:var(--amber);}
+  .att .chip.ok{border-color:rgba(55,211,154,.5);background:var(--emerald-dim);}
+  .att .chip.ok .ic{color:var(--emerald);}
+  .att .stat{font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted2);height:11px;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  /* backoff gap */
+  .gap{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:6px;justify-content:center;height:84px;}
+  .gap .bar{height:8px;border-radius:5px;background:var(--slot);position:relative;overflow:hidden;border:1px solid var(--border);}
+  .gap .bar .fill{position:absolute;inset:0;background:linear-gradient(90deg,var(--amber),rgba(227,162,58,.4));
+    transform-origin:left;transition:transform linear;}
+  .gap .lbl{font-family:var(--mono);font-size:10px;letter-spacing:.08em;color:var(--amber);text-transform:uppercase;white-space:nowrap;}
+  .gap .sub{font-size:8px;letter-spacing:.12em;color:var(--muted2);text-transform:uppercase;}
+
+  /* terminal */
+  .term{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:6px;padding:0 8px;}
+  .term .b{padding:9px 14px;border-radius:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;font-size:13px;
+    font-family:var(--mono);}
+  .term.ok .b{background:var(--emerald-dim);color:var(--emerald);border:1px solid rgba(55,211,154,.5);}
+  .term.dlq .b{background:var(--amber-dim);color:var(--amber);border:1px solid rgba(227,162,58,.5);}
+  .term .s{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted2);}
+
+  /* ---------- ledger ---------- */
+  .ledger{margin-top:18px;background:var(--panel);border:1px solid var(--border);border-radius:16px;
+    padding:16px 18px;display:flex;align-items:center;gap:22px;}
+  .ledger .num{font-family:var(--mono);font-size:34px;font-weight:700;line-height:1;}
+  .ledger .num.coral{color:var(--coral);} .ledger .num.eme{color:var(--emerald);} .ledger .num.amb{color:var(--amber);}
+  .ledger .l{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted2);margin-top:5px;}
+  .ledger .verdict{flex:1;font-size:12.5px;color:var(--muted);line-height:1.5;border-left:1px solid var(--border-soft);padding-left:18px;}
+  .ledger .verdict b{color:var(--text);}
+
+  .footnote{font-size:12.5px;color:var(--muted);max-width:720px;margin:16px 2px 0;line-height:1.6;}
+  .footnote b{color:var(--coral);} .footnote .g{color:var(--emerald);} .footnote .a{color:var(--amber);}
+
+  /* ---------- bottom nav chrome ---------- */
+  .nav{position:sticky;bottom:0;margin:26px -20px 0;padding:12px 0 16px;
+    background:linear-gradient(180deg,transparent,var(--bg2) 40%);
+    display:flex;justify-content:center;gap:34px;border-top:1px solid var(--border-soft);}
+  .nav .tab{display:flex;flex-direction:column;align-items:center;gap:5px;font-size:11px;letter-spacing:.05em;color:var(--muted2);}
+  .nav .tab.active{color:var(--coral);}
+  .nav .tab svg{opacity:.85;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- top bar -->
+  <div class="topbar">
+    <div class="brand">
+      <span class="mark" aria-hidden="true">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M5 17h14"/><path d="M6 17a6 6 0 0 1 12 0"/><path d="M12 5V3"/><path d="M19 9l1-1"/><path d="M5 9 4 8"/>
+        </svg>
+      </span>
+      <span class="name">OGOH</span>
+    </div>
+    <span class="pill on"><span class="dot"></span>Broker onlayn</span>
+  </div>
+
+  <div class="rule"></div>
+
+  <!-- object header -->
+  <div class="obj-tag">Lesson 03 · Xato va qayta urinish</div>
+  <div class="obj-head">
+    <div class="obj-title">Failures&nbsp;&amp;&nbsp;Retries</div>
+    <span class="pill" id="statePill"><span class="dot"></span><span id="statePillTxt">Tayyor</span></span>
+  </div>
+
+  <!-- controls -->
+  <div class="controls">
+    <div class="ctl">
+      <div class="lab">Urinishlar · attempts <b id="attV">3</b></div>
+      <input type="range" id="attempts" min="1" max="5" step="1" value="3" />
+      <div class="scale"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span></div>
+    </div>
+    <div class="ctl">
+      <div class="lab eme">Muvaffaqiyat · succeeds on <b class="" id="succV" style="color:var(--emerald)">3</b></div>
+      <input type="range" id="succeed" class="eme" min="1" max="5" step="1" value="3" />
+      <div class="scale"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span></div>
+    </div>
+  </div>
+  <div class="controls">
+    <div class="ctl">
+      <div class="lab">Backoff turi · type</div>
+      <div class="seg" id="seg">
+        <button class="active" data-bo="exponential">Exponential<span class="sub">1s · 2s · 4s · 8s</span></button>
+        <button data-bo="fixed">Fixed<span class="sub">2s · 2s · 2s</span></button>
+      </div>
+    </div>
+    <div class="ctl" style="display:flex;flex-direction:column;justify-content:center;">
+      <div class="lab">Doim xato · always fail</div>
+      <div class="toggle" id="alwaysFail"><span class="sw"></span><span class="tt">O'CHIQ</span></div>
+    </div>
+  </div>
+
+  <div class="runrow">
+    <button class="btn" id="run">Ishga tushirish / Run</button>
+    <div class="cfg" id="cfg"></div>
+  </div>
+
+  <!-- timeline -->
+  <div class="tl-head">
+    <span class="t">Vaqt chizig'i · timeline</span>
+    <span class="h" id="clock">t = 0.0s</span>
+  </div>
+  <div class="timeline" id="timeline">
+    <span class="tl-empty">Ishni boshlash uchun ISHGA TUSHIRISH ni bosing · press RUN to start a job.</span>
+  </div>
+
+  <!-- ledger -->
+  <div class="ledger">
+    <div><div class="num coral" id="lAtt">0</div><div class="l">Urinishlar</div></div>
+    <div><div class="num amb" id="lWait">0.0s</div><div class="l">Jami kutish</div></div>
+    <div><div class="num eme" id="lRes">—</div><div class="l">Natija</div></div>
+    <div class="verdict" id="verdict"></div>
+  </div>
+
+  <p class="footnote" id="footnote"></p>
+
+  <!-- bottom nav chrome -->
+  <div class="nav">
+    <div class="tab active">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17h14"/><path d="M6 17a6 6 0 0 1 12 0"/><path d="M12 5V3"/></svg>
+      Trevoga</div>
+    <div class="tab">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M16 4a3 3 0 0 1 0 6"/><path d="M21 20a6 6 0 0 0-3-5"/></svg>
+      Aholi</div>
+    <div class="tab">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+      Tarix</div>
+    <div class="tab">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4 3 7v13l6-3 6 3 6-3V4l-6 3-6-3Z"/><path d="M9 4v13"/><path d="M15 7v13"/></svg>
+      Xarita</div>
+    <div class="tab">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg>
+      Sozlama</div>
+  </div>
+
+</div>
+
+<script>
+(() => {
+  const $ = (s)=>document.querySelector(s);
+  const RATE = 400;           // ms of wall-clock per 1 simulated second
+  const BASE = 1000;          // backoff base delay (ms, simulated) → 1.0s
+  const RUNTIME = 0.6;        // simulated seconds a single attempt "runs" before resolving
+
+  let attempts = 3, succeedOn = 3, backoff = "exponential", alwaysFail = false;
+  let running = false, simT = 0, clockTimer = null;
+
+  // ----- backoff delay (simulated seconds) before attempt #k (k = 2..attempts) -----
+  function gapSeconds(k){ // k is the attempt about to start (2-based)
+    if(backoff==="fixed") return (BASE/1000)*2;            // fixed 2.0s
+    return (BASE/1000) * Math.pow(2, k-2);                 // exp: 1,2,4,8 ...
+  }
+
+  // ----- control wiring -----
+  $("#attempts").addEventListener("input",e=>{
+    attempts=+e.target.value; $("#attV").textContent=attempts;
+    const sc=$("#succeed"); sc.max=attempts;
+    if(succeedOn>attempts){ succeedOn=attempts; sc.value=attempts; $("#succV").textContent=attempts; }
+    syncCfg();
+  });
+  $("#succeed").addEventListener("input",e=>{
+    succeedOn=+e.target.value; $("#succV").textContent=succeedOn; syncCfg();
+  });
+  $("#seg").addEventListener("click",e=>{
+    const b=e.target.closest("button"); if(!b) return;
+    backoff=b.dataset.bo;
+    [...$("#seg").children].forEach(x=>x.classList.toggle("active",x===b));
+    syncCfg();
+  });
+  $("#alwaysFail").addEventListener("click",()=>{
+    alwaysFail=!alwaysFail;
+    $("#alwaysFail").classList.toggle("on",alwaysFail);
+    $("#alwaysFail").querySelector(".tt").textContent=alwaysFail?"YONIQ":"O'CHIQ";
+    $("#succeed").disabled=alwaysFail;
+    syncCfg();
+  });
+
+  function syncCfg(){
+    const bo = backoff==="exponential"
+      ? `{ type:"exponential", delay:1000 }`
+      : `{ type:"fixed", delay:2000 }`;
+    const succTxt = alwaysFail
+      ? `<span style="color:var(--amber)">always throws</span>`
+      : `succeeds on <b>#${succeedOn}</b>`;
+    $("#cfg").innerHTML =
+      `attempts: <b>${attempts}</b> · backoff: <b>${bo}</b><br>worker ${succTxt}`;
+  }
+
+  // ----- run a simulated job -----
+  const tl = $("#timeline");
+
+  function startClock(){
+    const t0 = performance.now() - simT*RATE;
+    clockTimer = setInterval(()=>{ simT=(performance.now()-t0)/RATE; $("#clock").textContent=`t = ${simT.toFixed(1)}s`; },50);
+  }
+  function stopClock(){ clearInterval(clockTimer); clockTimer=null; }
+  const wait = ms => new Promise(r=>setTimeout(r,ms));
+
+  function setPill(txt,cls){ const p=$("#statePill"); p.className="pill"+(cls?(" "+cls):"");
+    p.querySelector(".dot").style.background = cls==="on" ? "" : "";
+    $("#statePillTxt").textContent=txt; }
+
+  async function run(){
+    if(running) return;
+    running=true; simT=0;
+    $("#run").disabled=true; tl.innerHTML=""; startClock();
+    setPill("Ishlayapti","on");
+    $("#lRes").textContent="—"; $("#lRes").className="num eme";
+
+    let usedAttempts=0, totalWait=0, succeeded=false;
+
+    for(let k=1;k<=attempts;k++){
+      // backoff gap BEFORE attempts 2..N
+      if(k>1){
+        const g = gapSeconds(k);          // simulated seconds
+        totalWait += g;
+        $("#statePillTxt").textContent="Kutmoqda (delayed)";
+        await drainGap(g);
+        $("#lWait").textContent=totalWait.toFixed(1)+"s";
+      }
+
+      usedAttempts=k;
+      $("#lAtt").textContent=usedAttempts;
+      const chip = addAttempt(k);
+      $("#statePillTxt").textContent=`Urinish #${k} (active)`;
+      await wait(RUNTIME*RATE);          // attempt "runs"
+
+      const willSucceed = !alwaysFail && k>=succeedOn;
+      if(willSucceed){ markAttempt(chip,"ok"); succeeded=true; break; }
+      else { markAttempt(chip,"fail"); }
+    }
+
+    addTerminal(succeeded);
+    stopClock();
+    finish(succeeded, usedAttempts, totalWait);
+    running=false; $("#run").disabled=false;
+  }
+
+  // ----- timeline builders -----
+  function addAttempt(k){
+    const wrap=document.createElement("div"); wrap.className="att";
+    wrap.innerHTML=`<div class="chip run"><span class="n">try ${k}</span><span class="ic">●</span></div>
+      <div class="stat">ishlayapti</div>`;
+    tl.appendChild(wrap); tl.scrollLeft=tl.scrollWidth;
+    return wrap;
+  }
+  function markAttempt(wrap,kind){
+    const chip=wrap.querySelector(".chip"), stat=wrap.querySelector(".stat");
+    chip.classList.remove("run");
+    if(kind==="ok"){ chip.classList.add("ok"); chip.querySelector(".ic").textContent="✓"; stat.textContent="bajarildi"; }
+    else { chip.classList.add("fail"); chip.querySelector(".ic").textContent="✗"; stat.textContent="xato"; }
+  }
+
+  async function drainGap(seconds){
+    const wrap=document.createElement("div"); wrap.className="gap";
+    const w = Math.min(160, 34 + seconds*16); // wider bar for longer waits → growth is visible
+    wrap.innerHTML=`<div class="lbl">Kutish ${seconds.toFixed(1)}s</div>
+      <div class="bar" style="width:${w}px"><div class="fill"></div></div>
+      <div class="sub">backoff · delayed</div>`;
+    tl.appendChild(wrap); tl.scrollLeft=tl.scrollWidth;
+    const fill=wrap.querySelector(".fill");
+    fill.style.transform="scaleX(1)";
+    const dur=seconds*RATE;
+    await new Promise(r=>requestAnimationFrame(()=>{
+      fill.style.transitionDuration=dur+"ms";
+      fill.style.transform="scaleX(0)";
+      setTimeout(r,dur);
+    }));
+  }
+
+  function addTerminal(ok){
+    const wrap=document.createElement("div");
+    wrap.className="term "+(ok?"ok":"dlq");
+    wrap.innerHTML = ok
+      ? `<div class="b">Bajarildi</div><div class="s">completed</div>`
+      : `<div class="b">Xato → DLQ</div><div class="s">failed · attempts exhausted</div>`;
+    tl.appendChild(wrap); tl.scrollLeft=tl.scrollWidth;
+  }
+
+  // ----- finish: ledger + verdict + pill -----
+  function finish(ok, used, totalWait){
+    $("#lAtt").textContent=used;
+    $("#lWait").textContent=totalWait.toFixed(1)+"s";
+    $("#lRes").textContent = ok ? "BAJARILDI" : "XATO";
+    $("#lRes").className = "num "+(ok?"eme":"amb");
+    $("#lRes").style.fontSize="20px"; $("#lRes").style.paddingTop="7px";
+    setPill(ok?"Bajarildi":"Xato — DLQ", ok?"on":"");
+    if(!ok) $("#statePill").querySelector(".dot").style.background="var(--amber)";
+
+    const v=$("#verdict");
+    if(ok){
+      const retries = used-1;
+      v.innerHTML = retries===0
+        ? `<b>Completed on the first try</b> — no retry needed. But had it thrown, the broker would have held the job and tried again.`
+        : `The worker threw <b>${retries} time${retries>1?'s':''}</b>, yet the job <b style="color:var(--emerald)">survived</b> and completed on attempt <b>#${used}</b>. This is at-least-once + retries: a transient crash isn't data loss — the broker re-runs the job. ${backoff==="exponential"?`Exponential backoff let each gap <b style="color:var(--amber)">grow</b> (1s→2s→4s…), giving the flaky dependency time to recover instead of being hammered.`:`Fixed backoff spaced retries evenly at <b style="color:var(--amber)">2s</b> each.`}`;
+    } else {
+      v.innerHTML = `All <b>${used} attempts</b> threw, so the broker stopped retrying and <b style="color:var(--amber)">permanently failed</b> the job → it heads to the <b style="color:var(--amber)">DLQ</b> (Lesson 06), kept in Redis with its <i>failedReason</i> so you can inspect or replay it. Giving up was a <b>deliberate</b> limit you set with <code>attempts</code>, not an accident.`;
+    }
+  }
+
+  $("#run").addEventListener("click",run);
+
+  $("#footnote").innerHTML =
+    `When a worker <b>throws</b>, BullMQ doesn't lose the job — it counts the attempt and, if tries remain, parks it in <b class="a">delayed</b> for a <b class="a">backoff</b> gap, then re-runs it. `+
+    `<span class="g">return</span> = completed; running out of <code>attempts</code> = a deliberate <b class="a">failed</b> (→ DLQ, Lesson 06). `+
+    `<b>Fixed</b> waits the same each time; <b class="a">exponential</b> grows the gap (1s, 2s, 4s…) so a flaky dependency gets room to breathe.`;
+
+  syncCfg();
+})();
+</script>
+</body>
+</html>

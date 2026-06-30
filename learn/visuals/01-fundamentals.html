@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lesson 01 — Producer · Queue · Consumer (OGOH dispatch console)</title>
+<style>
+  :root{
+    --bg:#0b0b0d; --bg2:#070708;
+    --panel:#141416; --panel2:#1a1a1d; --slot:#202024;
+    --border:#2a2a2f; --border-soft:rgba(255,255,255,.06);
+    --text:#ededed; --muted:#7c7c83; --muted2:#55555b;
+    --coral:#ff6c5a; --coral-deep:#e63c2c; --coral-glow:rgba(255,92,70,.40);
+    --emerald:#37d39a; --emerald-dim:rgba(55,211,154,.14);
+    --amber:#e3a23a; --amber-dim:rgba(227,162,58,.14);
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;}
+  body{
+    background:
+      repeating-linear-gradient(45deg,rgba(255,255,255,.013) 0 2px,transparent 2px 11px),
+      radial-gradient(120% 80% at 50% -10%,#15151a 0%,var(--bg) 55%,var(--bg2) 100%);
+    color:var(--text); font:14px/1.55 var(--sans);
+    min-height:100vh; padding:22px 20px 0; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:760px;margin:0 auto;}
+
+  /* ---------- top bar ---------- */
+  .topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;}
+  .brand{display:flex;align-items:center;gap:10px;}
+  .brand .mark{color:var(--coral);display:flex;}
+  .brand .name{font-weight:700;letter-spacing:.34em;font-size:15px;}
+  .pill{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border);
+    background:var(--panel);border-radius:999px;padding:6px 13px;font-size:11px;
+    letter-spacing:.16em;text-transform:uppercase;color:var(--muted);}
+  .pill .dot{width:7px;height:7px;border-radius:50%;background:var(--muted2);}
+  .pill.on{color:var(--emerald);border-color:rgba(55,211,154,.32);}
+  .pill.on .dot{background:var(--emerald);box-shadow:0 0 8px var(--emerald);}
+
+  .rule{height:1px;background:var(--border-soft);margin:14px 0 16px;}
+
+  /* ---------- object header ---------- */
+  .obj-tag{font-size:11px;letter-spacing:.2em;color:var(--muted2);text-transform:uppercase;margin-bottom:4px;}
+  .obj-head{display:flex;align-items:center;justify-content:space-between;gap:12px;}
+  .obj-title{font-size:25px;font-weight:700;letter-spacing:-.01em;}
+
+  /* ---------- three lanes ---------- */
+  .lanes{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-top:20px;align-items:stretch;}
+  .lane{position:relative;background:var(--panel);border:1px solid var(--border);border-radius:16px;
+    padding:14px 12px;display:flex;flex-direction:column;min-height:330px;}
+  .lane .role{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted2);}
+  .lane .nm{font-weight:700;font-size:14px;margin:3px 0 2px;letter-spacing:.02em;}
+  .lane .sub{font-size:10.5px;color:var(--muted2);line-height:1.4;min-height:30px;}
+  .lane.queue{border-color:rgba(255,92,70,.22);}
+  .lane.worker.online{border-color:rgba(55,211,154,.3);}
+  .lane.worker.busy{border-color:var(--coral);box-shadow:0 0 22px var(--coral-glow);}
+
+  /* arrows between lanes */
+  .lanes .arrow{position:absolute;top:46px;font-size:16px;color:var(--muted2);z-index:2;}
+  .arrow.a1{left:calc(33.33% - 8px);} .arrow.a2{left:calc(66.66% - 8px);}
+
+  /* producer add button */
+  .add-btn{margin-top:auto;background:var(--coral);color:#2a0a05;border:0;border-radius:10px;
+    padding:13px 12px;font:inherit;font-weight:700;letter-spacing:.05em;cursor:pointer;text-transform:uppercase;
+    box-shadow:0 0 0 1px rgba(255,120,90,.5),0 0 26px 2px var(--coral-glow);transition:transform .08s ease;}
+  .add-btn:active{transform:scale(.96);}
+  .add-btn .x{display:block;font-size:9.5px;letter-spacing:.18em;opacity:.78;font-weight:600;margin-top:3px;}
+  .pcount{margin-top:12px;text-align:center;font-family:var(--mono);font-size:11px;color:var(--muted2);}
+
+  /* queue stack (grows) */
+  .qhead{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
+  .qbadge{font-family:var(--mono);font-size:11px;color:var(--coral);}
+  .qstack{flex:1;display:flex;flex-direction:column-reverse;gap:6px;overflow:auto;
+    padding:6px;border-radius:10px;background:#0c0c0e;border:1px dashed var(--border);min-height:160px;}
+  .qstack.empty{align-items:center;justify-content:center;}
+  .qempty{color:var(--muted2);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;text-align:center;}
+
+  /* job chip */
+  .chip{display:flex;align-items:center;gap:7px;background:var(--slot);border:1px solid var(--border);
+    border-radius:8px;padding:7px 9px;font-family:var(--mono);font-size:12px;color:var(--text);
+    animation:chipIn .28s ease;}
+  .chip .led{width:6px;height:6px;border-radius:50%;background:var(--muted2);flex:none;}
+  .chip .pl{color:var(--muted2);font-size:11px;}
+  .chip.active{border-color:var(--coral);box-shadow:0 0 16px var(--coral-glow);color:var(--coral);}
+  .chip.active .led{background:var(--coral);box-shadow:0 0 6px var(--coral);}
+  @keyframes chipIn{from{opacity:0;transform:translateY(-6px);}to{opacity:1;transform:none;}}
+  @keyframes chipOut{to{opacity:0;transform:translateX(14px) scale(.9);}}
+  .chip.leaving{animation:chipOut .22s ease forwards;}
+
+  /* worker toggle + processing slot */
+  .seg{display:flex;gap:6px;background:#0c0c0e;border:1px solid var(--border);border-radius:11px;padding:5px;margin-bottom:10px;}
+  .seg button{flex:1;border:0;background:transparent;color:var(--muted);cursor:pointer;padding:9px 8px;
+    border-radius:8px;font:inherit;font-size:11px;letter-spacing:.12em;text-transform:uppercase;font-weight:600;transition:.18s;}
+  .seg button.active.on{background:var(--slot);color:var(--emerald);box-shadow:inset 0 0 0 1px rgba(55,211,154,.3);}
+  .seg button.active.off{background:var(--slot);color:var(--muted);box-shadow:inset 0 0 0 1px var(--border);}
+  .wslot{flex:1;display:flex;align-items:center;justify-content:center;border-radius:10px;
+    background:#0c0c0e;border:1px dashed var(--border);min-height:90px;padding:10px;}
+  .wstate{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted2);text-align:center;}
+  .wdone{margin-top:10px;display:flex;align-items:center;justify-content:center;gap:8px;}
+  .wdone .num{font-family:var(--mono);font-size:26px;font-weight:700;color:var(--emerald);line-height:1;}
+  .wdone .l{font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted2);}
+
+  /* ---------- ledger ---------- */
+  .ledger{margin-top:20px;background:var(--panel);border:1px solid var(--border);border-radius:16px;
+    padding:16px 18px;display:flex;align-items:center;gap:22px;}
+  .ledger .num{font-family:var(--mono);font-size:34px;font-weight:700;line-height:1;}
+  .ledger .num.coral{color:var(--coral);} .ledger .num.amb{color:var(--amber);} .ledger .num.eme{color:var(--emerald);}
+  .ledger .l{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted2);margin-top:5px;}
+  .ledger .verdict{flex:1;font-size:12.5px;color:var(--muted);line-height:1.5;
+    border-left:1px solid var(--border-soft);padding-left:18px;}
+  .ledger .verdict b{color:var(--text);}
+
+  .footnote{font-size:12.5px;color:var(--muted);max-width:720px;margin:16px 2px 0;line-height:1.6;}
+  .footnote b{color:var(--coral);} .footnote .g{color:var(--emerald);}
+
+  /* ---------- bottom nav chrome ---------- */
+  .nav{position:sticky;bottom:0;margin:26px -20px 0;padding:12px 0 16px;
+    background:linear-gradient(180deg,transparent,var(--bg2) 40%);
+    display:flex;justify-content:center;gap:34px;border-top:1px solid var(--border-soft);}
+  .nav .tab{display:flex;flex-direction:column;align-items:center;gap:5px;font-size:11px;
+    letter-spacing:.05em;color:var(--muted2);}
+  .nav .tab.active{color:var(--coral);}
+  .nav .tab svg{opacity:.85;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- top bar -->
+  <div class="topbar">
+    <div class="brand">
+      <span class="mark" aria-hidden="true">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M5 17h14"/><path d="M6 17a6 6 0 0 1 12 0"/><path d="M12 5V3"/><path d="M19 9l1-1"/><path d="M5 9 4 8"/>
+        </svg>
+      </span>
+      <span class="name">OGOH</span>
+    </div>
+    <span class="pill on"><span class="dot"></span>Broker onlayn</span>
+  </div>
+
+  <div class="rule"></div>
+
+  <!-- object header -->
+  <div class="obj-tag">Lesson 01 · Asoslar</div>
+  <div class="obj-head">
+    <div class="obj-title">Producer · Queue · Consumer</div>
+    <span class="pill" id="wpill"><span class="dot"></span><span id="wpillTxt">Worker oflayn</span></span>
+  </div>
+
+  <!-- three lanes -->
+  <div class="lanes">
+    <span class="arrow a1" aria-hidden="true">→</span>
+    <span class="arrow a2" aria-hidden="true">→</span>
+
+    <!-- PRODUCER -->
+    <div class="lane producer">
+      <div class="role">Producer</div>
+      <div class="nm">Dispetcher</div>
+      <div class="sub">queue.add() — drops a job and returns at once.</div>
+      <button class="add-btn" id="add">QO'SHISH<span class="x">ADD JOB</span></button>
+      <div class="pcount">QO'SHILDI · <span id="pc">0</span></div>
+    </div>
+
+    <!-- NAVBAT / QUEUE -->
+    <div class="lane queue">
+      <div class="qhead">
+        <div><div class="role">Navbat · Queue</div><div class="nm" style="margin-bottom:0">Redis buffer</div></div>
+        <span class="qbadge" id="qb">0</span>
+      </div>
+      <div class="sub">Durable buffer. Jobs wait here until a worker pulls them.</div>
+      <div class="qstack empty" id="qstack"><span class="qempty">Bo'sh · empty</span></div>
+    </div>
+
+    <!-- WORKER -->
+    <div class="lane worker" id="wlane">
+      <div class="role">Consumer</div>
+      <div class="nm">Worker</div>
+      <div class="sub">Pulls one job at a time, processes, completes.</div>
+      <div class="seg" id="seg">
+        <button class="on" data-on="1">Onlayn</button>
+        <button class="off active off" data-on="0">Oflayn</button>
+      </div>
+      <div class="wslot"><div class="wstate" id="wstate">Oflayn · kutmoqda</div></div>
+      <div class="wdone"><span class="num" id="wd">0</span><span class="l">Bajarildi<br>completed</span></div>
+    </div>
+  </div>
+
+  <!-- ledger -->
+  <div class="ledger">
+    <div><div class="num coral" id="lAdd">0</div><div class="l">Qo'shildi</div></div>
+    <div><div class="num amb" id="lWait">0</div><div class="l">Navbatda</div></div>
+    <div><div class="num eme" id="lDone">0</div><div class="l">Bajarildi</div></div>
+    <div class="verdict" id="verdict"></div>
+  </div>
+
+  <p class="footnote" id="footnote"></p>
+
+  <!-- bottom nav chrome -->
+  <div class="nav">
+    <div class="tab active">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17h14"/><path d="M6 17a6 6 0 0 1 12 0"/><path d="M12 5V3"/></svg>
+      Trevoga</div>
+    <div class="tab">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M16 4a3 3 0 0 1 0 6"/><path d="M21 20a6 6 0 0 0-3-5"/></svg>
+      Aholi</div>
+    <div class="tab">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+      Tarix</div>
+    <div class="tab">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4 3 7v13l6-3 6 3 6-3V4l-6 3-6-3Z"/><path d="M9 4v13"/><path d="M15 7v13"/></svg>
+      Xarita</div>
+    <div class="tab">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg>
+      Sozlama</div>
+  </div>
+
+</div>
+
+<script>
+(() => {
+  const $ = (s)=>document.querySelector(s);
+  let nextId=1, added=0, done=0, online=false, busy=false;
+  const queue=[]; // array of job ids waiting
+
+  const qstack=$("#qstack"), wlane=$("#wlane");
+
+  function renderQueue(){
+    qstack.innerHTML="";
+    if(queue.length===0){
+      qstack.classList.add("empty");
+      qstack.innerHTML=`<span class="qempty">Bo'sh · empty</span>`;
+    } else {
+      qstack.classList.remove("empty");
+      // column-reverse: first element (next to run) renders at the bottom
+      queue.forEach((id,idx)=>{
+        const c=document.createElement("div");
+        c.className="chip"+(busy&&idx===0?" active":"");
+        c.innerHTML=`<span class="led"></span>job #${id} <span class="pl">greet</span>`;
+        qstack.appendChild(c);
+      });
+    }
+    $("#qb").textContent=queue.length;
+  }
+
+  function update(){
+    $("#pc").textContent=added;
+    $("#wd").textContent=done;
+    $("#lAdd").textContent=added;
+    $("#lWait").textContent=queue.length;
+    $("#lDone").textContent=done;
+    renderVerdict();
+  }
+
+  function renderVerdict(){
+    const v=$("#verdict");
+    if(added===0){
+      v.innerHTML=`Press <b>QO'SHISH / ADD JOB</b> with the worker <b>oflayn</b> — watch the queue grow. Then flip it <b>onlayn</b> to drain the backlog.`;
+      return;
+    }
+    const w=queue.length;
+    v.innerHTML=`Producer added <b>${added}</b>, worker completed <b>${done}</b>. `+
+      (w>0
+        ? `The <b>${w}</b> waiting ${w===1?'job is':'jobs are'} buffered in Redis — the worker being ${online?'busy':'offline'} never loses them.`
+        : `Queue is empty — every job was delivered. Crash or restart either side; the buffer keeps the rest safe.`);
+  }
+
+  // ---- producer ----
+  $("#add").addEventListener("click",()=>{
+    added++; queue.push(nextId++);
+    renderQueue(); update();
+    pump();
+  });
+
+  // ---- worker toggle ----
+  $("#seg").addEventListener("click",(e)=>{
+    const b=e.target.closest("button"); if(!b) return;
+    online = b.dataset.on==="1";
+    [...$("#seg").children].forEach(x=>x.classList.toggle("active",x===b));
+    $("#wpillTxt").textContent = online ? "Worker onlayn" : "Worker oflayn";
+    $("#wpill").classList.toggle("on",online);
+    wlane.classList.toggle("online",online);
+    if(!online && !busy) setIdleState();
+    pump();
+  });
+
+  function setIdleState(){
+    $("#wstate").innerHTML = online ? `Onlayn · kutmoqda<br><span style="color:var(--emerald)">tayyor</span>`
+                                    : `Oflayn · kutmoqda`;
+  }
+
+  // ---- the worker loop: pull one, process ~700ms, complete, repeat ----
+  function pump(){
+    if(busy || !online || queue.length===0){ if(!busy) setIdleState(); return; }
+    busy=true;
+    wlane.classList.add("busy");
+    const id=queue[0]; // peek the next (stays in stack, highlighted)
+    renderQueue();
+    $("#wslot").innerHTML=`<div class="chip active"><span class="led"></span>job #${id} <span class="pl">ishlamoqda…</span></div>`;
+    setTimeout(()=>{
+      // complete it
+      queue.shift();
+      done++;
+      busy=false;
+      wlane.classList.remove("busy");
+      $("#wslot").innerHTML=`<div class="wstate">Bajarildi <span style="color:var(--emerald)">job #${id} ✓</span></div>`;
+      renderQueue(); update();
+      // pull the next if any remain
+      setTimeout(()=>{ if(!busy) setIdleState(); pump(); }, 180);
+    },700);
+  }
+
+  function setFoot(){
+    $("#footnote").innerHTML =
+      `The <b>producer</b> and <b>worker</b> are different processes — they never call each other, only the queue. `+
+      `Adding faster than the worker drains just grows the buffer; a worker that is <span class="g">offline</span> loses nothing — `+
+      `the jobs sit in Redis (<b>durable</b>) and get picked up the moment a worker comes back. That decoupling is the whole point.`;
+  }
+
+  setIdleState(); renderQueue(); update(); setFoot();
+})();
+</script>
+</body>
+</html>

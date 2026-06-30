@@ -1,0 +1,485 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lesson 06 — Dead Letter Queues (OGOH dispatch console)</title>
+<style>
+  :root{
+    --bg:#0b0b0d; --bg2:#070708;
+    --panel:#141416; --panel2:#1a1a1d; --slot:#202024;
+    --border:#2a2a2f; --border-soft:rgba(255,255,255,.06);
+    --text:#ededed; --muted:#7c7c83; --muted2:#55555b;
+    --coral:#ff6c5a; --coral-deep:#e63c2c; --coral-glow:rgba(255,92,70,.40);
+    --emerald:#37d39a; --emerald-dim:rgba(55,211,154,.14);
+    --amber:#e3a23a; --amber-dim:rgba(227,162,58,.14);
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;}
+  body{
+    background:
+      repeating-linear-gradient(45deg,rgba(255,255,255,.013) 0 2px,transparent 2px 11px),
+      radial-gradient(120% 80% at 50% -10%,#15151a 0%,var(--bg) 55%,var(--bg2) 100%);
+    color:var(--text); font:14px/1.55 var(--sans);
+    min-height:100vh; padding:22px 20px 0; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:760px;margin:0 auto;}
+
+  /* ---------- top bar ---------- */
+  .topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;}
+  .brand{display:flex;align-items:center;gap:10px;}
+  .brand .mark{color:var(--coral);display:flex;}
+  .brand .name{font-weight:700;letter-spacing:.34em;font-size:15px;}
+  .pill{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border);
+    background:var(--panel);border-radius:999px;padding:6px 13px;font-size:11px;
+    letter-spacing:.16em;text-transform:uppercase;color:var(--muted);}
+  .pill .dot{width:7px;height:7px;border-radius:50%;background:var(--muted2);}
+  .pill.on{color:var(--emerald);border-color:rgba(55,211,154,.32);}
+  .pill.on .dot{background:var(--emerald);box-shadow:0 0 8px var(--emerald);}
+  .rule{height:1px;background:var(--border-soft);margin:14px 0 16px;}
+
+  /* ---------- object header ---------- */
+  .obj-tag{font-size:11px;letter-spacing:.2em;color:var(--muted2);text-transform:uppercase;margin-bottom:4px;}
+  .obj-head{display:flex;align-items:center;justify-content:space-between;gap:12px;}
+  .obj-title{font-size:25px;font-weight:700;letter-spacing:-.01em;}
+  .stats{display:flex;gap:22px;margin-top:9px;font-size:12px;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--muted2);}
+  .stats b{color:var(--text);font-weight:700;}
+
+  /* ---------- controls ---------- */
+  .controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:18px 0 4px;}
+  .btn{background:var(--coral);color:#2a0a05;border:0;border-radius:10px;padding:11px 18px;
+    font:inherit;font-weight:700;letter-spacing:.04em;cursor:pointer;display:inline-flex;align-items:center;gap:8px;
+    box-shadow:0 0 0 1px rgba(255,120,90,.4),0 0 22px 0 var(--coral-glow);transition:transform .08s, box-shadow .2s;}
+  .btn:active{transform:scale(.97);}
+  .btn.sec{background:var(--slot);color:var(--text);border:1px solid var(--border);box-shadow:none;}
+  .btn:disabled{opacity:.45;cursor:not-allowed;box-shadow:none;}
+  .btn .sub{font-size:9.5px;letter-spacing:.16em;opacity:.7;font-weight:600;text-transform:uppercase;}
+  /* fix toggle */
+  .fix{margin-left:auto;display:inline-flex;align-items:center;gap:11px;background:var(--panel);
+    border:1px solid var(--border);border-radius:12px;padding:9px 14px;cursor:pointer;user-select:none;}
+  .fix .lbl{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);}
+  .fix .lbl small{display:block;font-size:9px;letter-spacing:.04em;color:var(--muted2);text-transform:none;}
+  .switch{width:42px;height:23px;border-radius:999px;background:var(--slot);border:1px solid var(--border);
+    position:relative;transition:.2s;flex:none;}
+  .switch::after{content:"";position:absolute;top:2px;left:2px;width:17px;height:17px;border-radius:50%;
+    background:var(--muted);transition:.2s;}
+  .fix.on .switch{background:var(--emerald-dim);border-color:rgba(55,211,154,.4);}
+  .fix.on .switch::after{left:21px;background:var(--emerald);box-shadow:0 0 8px var(--emerald);}
+  .fix.on .lbl{color:var(--emerald);}
+
+  /* ---------- processing lane ---------- */
+  .lane{position:relative;background:var(--panel);border:1px solid var(--border);border-radius:16px;
+    padding:14px 16px 16px;margin-top:14px;overflow:hidden;}
+  .lane-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+  .lane-head .t{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);}
+  .worker{display:inline-flex;align-items:center;gap:7px;font-size:11px;letter-spacing:.1em;
+    text-transform:uppercase;color:var(--muted2);}
+  .worker .led{width:8px;height:8px;border-radius:50%;background:var(--emerald);box-shadow:0 0 7px var(--emerald);}
+  .worker.busy .led{background:var(--coral);box-shadow:0 0 9px var(--coral);}
+  .track{display:flex;align-items:center;gap:8px;min-height:42px;flex-wrap:wrap;}
+  .track .empty{font-size:12px;color:var(--muted2);font-style:italic;}
+
+  /* ---------- chips ---------- */
+  .chip{display:inline-flex;align-items:center;gap:6px;background:var(--slot);border:1px solid var(--border);
+    border-radius:8px;padding:6px 10px;font-family:var(--mono);font-size:12px;color:var(--text);
+    transition:.25s;animation:pop .25s;}
+  @keyframes pop{from{transform:scale(.7);opacity:0;}to{transform:scale(1);opacity:1;}}
+  .chip.proc{border-color:var(--coral);box-shadow:0 0 16px var(--coral-glow);color:var(--coral);}
+  .chip.ok{border-color:rgba(55,211,154,.4);color:var(--emerald);}
+  .chip.bad{border-color:rgba(227,162,58,.4);color:var(--amber);}
+  .chip .dotc{width:7px;height:7px;border-radius:50%;background:currentColor;}
+
+  /* ---------- columns ---------- */
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;}
+  .panelbox{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:14px 16px;}
+  .panelbox.dlq{border-color:rgba(227,162,58,.32);}
+  .pb-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:11px;}
+  .pb-head .t{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);}
+  .pb-head .t b{color:var(--amber);}
+  .pb-head .t.g b{color:var(--emerald);}
+  .count{font-family:var(--mono);font-size:13px;color:var(--muted);}
+
+  /* DLQ list */
+  .dlist{display:flex;flex-direction:column;gap:7px;max-height:230px;overflow:auto;}
+  .dlist .empty{font-size:12px;color:var(--muted2);font-style:italic;padding:8px 2px;}
+  .dead{border:1px solid rgba(227,162,58,.3);background:rgba(227,162,58,.05);border-radius:10px;
+    padding:9px 11px;cursor:pointer;transition:.18s;animation:pop .25s;}
+  .dead:hover{border-color:var(--amber);}
+  .dead.open{background:rgba(227,162,58,.1);}
+  .dead-top{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+  .dead-id{font-family:var(--mono);font-size:12.5px;color:var(--amber);font-weight:600;}
+  .dead-reason{font-size:11px;color:var(--muted);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .dead-detail{display:none;margin-top:9px;padding-top:9px;border-top:1px solid rgba(227,162,58,.18);
+    font-family:var(--mono);font-size:11px;color:var(--muted);line-height:1.7;}
+  .dead.open .dead-detail{display:block;}
+  .dead-detail b{color:var(--text);font-weight:600;}
+  .dead-detail .amb{color:var(--amber);}
+  .dead-actions{margin-top:9px;display:flex;gap:8px;}
+  .btn-sm{font-size:10px;letter-spacing:.1em;text-transform:uppercase;font-weight:700;
+    border-radius:7px;padding:6px 11px;cursor:pointer;border:1px solid var(--border);
+    background:var(--slot);color:var(--text);}
+  .btn-sm.rep{background:var(--coral);color:#2a0a05;border-color:transparent;}
+
+  /* recovered list */
+  .rlist{display:flex;flex-direction:column;gap:7px;max-height:230px;overflow:auto;}
+  .rlist .empty{font-size:12px;color:var(--muted2);font-style:italic;padding:8px 2px;}
+  .rec{display:flex;align-items:center;gap:8px;border:1px solid rgba(55,211,154,.28);
+    background:var(--emerald-dim);border-radius:10px;padding:8px 11px;font-family:var(--mono);
+    font-size:12px;color:var(--emerald);animation:pop .25s;}
+  .rec .dotc{width:7px;height:7px;border-radius:50%;background:var(--emerald);box-shadow:0 0 6px var(--emerald);}
+  .rec .r-reason{margin-left:auto;font-size:10px;color:var(--muted2);}
+
+  /* replay-all bar */
+  .replayall{margin-top:11px;display:flex;align-items:center;gap:10px;}
+  .replayall .note{font-size:11px;color:var(--muted2);}
+
+  /* ---------- flying token ---------- */
+  .token{position:fixed;width:13px;height:13px;border-radius:50%;pointer-events:none;z-index:50;
+    background:var(--coral);box-shadow:0 0 12px 2px var(--coral-glow);
+    transition:transform .55s cubic-bezier(.5,0,.3,1),opacity .55s;will-change:transform;}
+  .token.dead{background:var(--amber);box-shadow:0 0 12px 2px var(--amber-dim);}
+  .token.ok{background:var(--emerald);box-shadow:0 0 12px 2px var(--emerald-dim);}
+  .token.gone{opacity:0;}
+
+  /* ---------- ledger ---------- */
+  .ledger{margin-top:16px;background:var(--panel);border:1px solid var(--border);border-radius:16px;
+    padding:16px 18px;display:flex;align-items:center;gap:22px;}
+  .ledger .num{font-family:var(--mono);font-size:34px;font-weight:700;line-height:1;}
+  .ledger .num.coral{color:var(--coral);} .ledger .num.eme{color:var(--emerald);} .ledger .num.amb{color:var(--amber);}
+  .ledger .l{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted2);margin-top:5px;}
+  .ledger .verdict{flex:1;font-size:12.5px;color:var(--muted);line-height:1.5;
+    border-left:1px solid var(--border-soft);padding-left:18px;}
+  .ledger .verdict b{color:var(--text);} .ledger .verdict .g{color:var(--emerald);} .ledger .verdict .a{color:var(--amber);}
+
+  /* ---------- log ---------- */
+  .log{margin-top:14px;background:#070709;border:1px solid var(--border);border-radius:12px;
+    padding:12px 15px;font-family:var(--mono);font-size:12px;max-height:140px;overflow:auto;}
+  .log div{padding:1.5px 0;color:var(--muted2);}
+  .log .hl{color:var(--text);} .log .ok{color:var(--emerald);} .log .cor{color:var(--coral);} .log .amb{color:var(--amber);}
+
+  .footnote{font-size:12.5px;color:var(--muted);max-width:720px;margin:16px 2px 0;line-height:1.6;}
+  .footnote b{color:var(--coral);} .footnote .g{color:var(--emerald);} .footnote .a{color:var(--amber);}
+
+  /* ---------- bottom nav chrome ---------- */
+  .nav{position:sticky;bottom:0;margin:26px -20px 0;padding:12px 0 16px;
+    background:linear-gradient(180deg,transparent,var(--bg2) 40%);
+    display:flex;justify-content:center;gap:34px;border-top:1px solid var(--border-soft);}
+  .nav .tab{display:flex;flex-direction:column;align-items:center;gap:5px;font-size:11px;
+    letter-spacing:.05em;color:var(--muted2);}
+  .nav .tab.active{color:var(--coral);}
+  .nav .tab svg{opacity:.85;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- top bar -->
+  <div class="topbar">
+    <div class="brand">
+      <span class="mark" aria-hidden="true">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M5 17h14"/><path d="M6 17a6 6 0 0 1 12 0"/><path d="M12 5V3"/><path d="M19 9l1-1"/><path d="M5 9 4 8"/>
+        </svg>
+      </span>
+      <span class="name">OGOH</span>
+    </div>
+    <span class="pill on"><span class="dot"></span>Broker onlayn</span>
+  </div>
+
+  <div class="rule"></div>
+
+  <!-- object header -->
+  <div class="obj-tag">Lesson 06 · O'lik xatlar navbati</div>
+  <div class="obj-head">
+    <div class="obj-title">Dead&nbsp;Letter&nbsp;Queue</div>
+    <span class="pill" id="fixPill"><span class="dot"></span><span id="fixPillTxt">Bug bor</span></span>
+  </div>
+  <div class="stats">
+    <span>OQIM <b id="sFed">0</b></span>
+    <span>BAJARILDI <b id="sDone">0</b></span>
+    <span>O'LIK <b id="sDead">0</b></span>
+  </div>
+
+  <!-- controls -->
+  <div class="controls">
+    <button class="btn" id="feed">OQIM YUBORISH<span class="sub">feed jobs</span></button>
+    <button class="btn sec" id="auto">AVTO<span class="sub">stream</span></button>
+    <div class="fix" id="fix">
+      <span class="lbl">Tuzatildi<small>bug fixed at the source</small></span>
+      <span class="switch"></span>
+    </div>
+  </div>
+
+  <!-- processing lane -->
+  <div class="lane">
+    <div class="lane-head">
+      <span class="t">Navbat → worker</span>
+      <span class="worker" id="worker"><span class="led"></span>Worker · onlayn</span>
+    </div>
+    <div class="track" id="track"><span class="empty">bo'sh — OQIM YUBORISH bosing</span></div>
+  </div>
+
+  <!-- columns: DLQ + recovered -->
+  <div class="cols">
+    <div class="panelbox dlq">
+      <div class="pb-head">
+        <span class="t">O'lik xatlar · <b>DEAD LETTERS</b></span>
+        <span class="count" id="dlqCount">0</span>
+      </div>
+      <div class="dlist" id="dlist"><div class="empty">parking lot bo'sh</div></div>
+      <div class="replayall" id="replayAll" style="display:none;">
+        <button class="btn-sm rep" id="replayAllBtn">QAYTA YUBORISH — barchasi</button>
+        <span class="note">replay all back to the worker</span>
+      </div>
+    </div>
+    <div class="panelbox">
+      <div class="pb-head">
+        <span class="t g">Tiklandi · <b>RECOVERED</b></span>
+        <span class="count" id="recCount">0</span>
+      </div>
+      <div class="rlist" id="rlist"><div class="empty">hali tiklangan yo'q</div></div>
+    </div>
+  </div>
+
+  <!-- ledger -->
+  <div class="ledger">
+    <div><div class="num amb" id="lDead">0</div><div class="l">O'lik (DLQ)</div></div>
+    <div><div class="num coral" id="lReplay">0</div><div class="l">Qayta yuborildi</div></div>
+    <div><div class="num eme" id="lRec">0</div><div class="l">Tiklandi</div></div>
+    <div class="verdict" id="verdict"></div>
+  </div>
+
+  <div class="log" id="log"></div>
+
+  <p class="footnote" id="footnote"></p>
+
+  <!-- bottom nav chrome -->
+  <div class="nav">
+    <div class="tab active">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17h14"/><path d="M6 17a6 6 0 0 1 12 0"/><path d="M12 5V3"/></svg>
+      Trevoga</div>
+    <div class="tab">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M16 4a3 3 0 0 1 0 6"/><path d="M21 20a6 6 0 0 0-3-5"/></svg>
+      Aholi</div>
+    <div class="tab">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+      Tarix</div>
+    <div class="tab">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4 3 7v13l6-3 6 3 6-3V4l-6 3-6-3Z"/><path d="M9 4v13"/><path d="M15 7v13"/></svg>
+      Xarita</div>
+    <div class="tab">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg>
+      Sozlama</div>
+  </div>
+
+</div>
+
+<script>
+(() => {
+  const $ = (s)=>document.querySelector(s);
+  const REASONS = ["Payment gateway 500","Invalid card","Card declined","Gateway timeout","Insufficient funds"];
+  let jobSeq=0, fed=0, done=0, dead=0, replayed=0, recovered=0;
+  let fixed=false, busy=false, autoTimer=null;
+  const dlq=[]; // {id, reason, attempts, amount}
+
+  /* ---- fix toggle ---- */
+  $("#fix").addEventListener("click",()=>{
+    fixed=!fixed;
+    $("#fix").classList.toggle("on",fixed);
+    $("#fixPill").classList.toggle("on",fixed);
+    $("#fixPillTxt").textContent = fixed ? "Bug tuzatildi" : "Bug bor";
+    log(fixed
+      ? `<span class="ok">⚙ TUZATILDI</span> — root cause fixed · replayed jobs will now <span class="ok">succeed</span>`
+      : `<span class="amb">⚙ bug hali bor</span> — replays will fail again`);
+    renderVerdict();
+  });
+
+  /* ---- feed / auto ---- */
+  $("#feed").addEventListener("click",()=>feedBatch());
+  $("#auto").addEventListener("click",()=>{
+    if(autoTimer){ clearInterval(autoTimer); autoTimer=null; $("#auto").textContent="AVTO"; return; }
+    $("#auto").innerHTML='TOʼXTAT<span class="sub">stop</span>';
+    autoTimer=setInterval(()=>{ if(!busy) feedOne(Math.random()<0.4); },900);
+  });
+
+  function feedBatch(){
+    // a small mixed batch: a few succeed, some die
+    const plan=[false,true,false,false,true]; // true = will permanently fail
+    plan.forEach((bad,k)=> setTimeout(()=>feedOne(bad), k*420));
+  }
+
+  function feedOne(bad){
+    const id="job-"+(++jobSeq);
+    const amount=(Math.random()*180+10).toFixed(2);
+    fed++; update();
+    const chip=addChip(id,"proc","⚙");
+    $("#worker").classList.add("busy");
+    log(`<span class="cor">▶ ${id}</span> worker ishlamoqda… ($${amount})`);
+    setTimeout(()=>{
+      if(bad){
+        // retries exhausted → permanent failure → DLQ
+        const reason=REASONS[(jobSeq+dead)%REASONS.length];
+        chip.classList.remove("proc"); chip.classList.add("bad");
+        chip.querySelector(".dotc")&&0; chip.innerHTML=`<span class="dotc"></span>${id} · XATO`;
+        log(`<span class="amb">✗ ${id}</span> attempts 3/3 exhausted — <span class="amb">O'LIK XATGA tushdi</span>: ${reason}`);
+        setTimeout(()=>{ flyTo(chip,"#dlist",()=>{ chip.remove(); pushDead(id,reason,amount); }); endBusy(); },360);
+      } else {
+        done++; chip.classList.remove("proc"); chip.classList.add("ok");
+        chip.innerHTML=`<span class="dotc"></span>${id} · BAJARILDI`;
+        log(`<span class="ok">✓ ${id}</span> charged $${amount} — BAJARILDI`);
+        update();
+        setTimeout(()=>{ chip.classList.add("fade"); chip.style.transition=".4s"; chip.style.opacity="0"; chip.style.transform="translateY(-6px)";
+          setTimeout(()=>chip.remove(),420); endBusy(); },520);
+      }
+    },560);
+  }
+
+  function endBusy(){
+    setTimeout(()=>{ if($("#track").querySelectorAll(".chip.proc").length===0){ $("#worker").classList.remove("busy"); ensureEmpty(); } },120);
+  }
+
+  /* ---- track chips ---- */
+  function addChip(id,cls,ico){
+    const t=$("#track"); const e=t.querySelector(".empty"); if(e) e.remove();
+    const c=document.createElement("div"); c.className="chip "+cls;
+    c.innerHTML=`<span class="dotc"></span>${id}`;
+    t.appendChild(c); return c;
+  }
+  function ensureEmpty(){
+    const t=$("#track");
+    if(t.querySelectorAll(".chip").length===0 && !t.querySelector(".empty")){
+      const e=document.createElement("span"); e.className="empty"; e.textContent="bo'sh — OQIM YUBORISH bosing"; t.appendChild(e);
+    }
+  }
+
+  /* ---- DLQ ---- */
+  function pushDead(id,reason,amount){
+    dead++; dlq.push({id,reason,attempts:3,amount});
+    renderDLQ(); update();
+  }
+  function renderDLQ(){
+    const l=$("#dlist"); l.innerHTML="";
+    $("#dlqCount").textContent=dlq.length;
+    $("#replayAll").style.display = dlq.length ? "flex" : "none";
+    if(dlq.length===0){ l.innerHTML='<div class="empty">parking lot bo\'sh</div>'; return; }
+    dlq.forEach((d,i)=>{
+      const el=document.createElement("div"); el.className="dead"; el.dataset.i=i;
+      el.innerHTML=`
+        <div class="dead-top">
+          <span class="dead-id">${d.id}</span>
+          <span class="dead-reason">${d.reason}</span>
+        </div>
+        <div class="dead-detail">
+          failedReason: <span class="amb">"${d.reason}"</span><br>
+          attemptsMade: <b>${d.attempts}/3</b> · terminal<br>
+          data: <b>{ amount: ${d.amount}, valid: false }</b>
+          <div class="dead-actions">
+            <button class="btn-sm rep" data-act="replay">QAYTA YUBORISH</button>
+          </div>
+        </div>`;
+      l.appendChild(el);
+    });
+  }
+  $("#dlist").addEventListener("click",(e)=>{
+    const act=e.target.closest("[data-act]");
+    const card=e.target.closest(".dead");
+    if(!card) return;
+    if(act && act.dataset.act==="replay"){ e.stopPropagation(); replayOne(+card.dataset.i); return; }
+    card.classList.toggle("open");
+  });
+
+  $("#replayAllBtn").addEventListener("click",()=>{
+    const n=dlq.length;
+    log(`<span class="cor">↺ QAYTA YUBORISH</span> — ${n} ta o'lik xat navbatga qaytarildi`);
+    // replay from the end so indices stay valid
+    const copy=[...dlq]; dlq.length=0; renderDLQ();
+    copy.forEach((d,k)=> setTimeout(()=>replayJob(d), k*380) );
+  });
+
+  function replayOne(i){
+    const d=dlq.splice(i,1)[0]; renderDLQ();
+    log(`<span class="cor">↺ QAYTA YUBORISH</span> — ${d.id} navbatga qaytdi`);
+    replayJob(d);
+  }
+
+  function replayJob(d){
+    replayed++; update();
+    const chip=addChip(d.id, fixed?"ok":"proc","");
+    chip.classList.add("proc"); chip.innerHTML=`<span class="dotc"></span>${d.id}`;
+    $("#worker").classList.add("busy");
+    setTimeout(()=>{
+      if(fixed){
+        recovered++; done++;
+        chip.classList.remove("proc"); chip.classList.add("ok");
+        chip.innerHTML=`<span class="dotc"></span>${d.id} · TIKLANDI`;
+        log(`<span class="ok">✓ ${d.id}</span> bug tuzatilgan — <span class="ok">TIKLANDI</span> (charged $${d.amount})`);
+        pushRecovered(d);
+        update();
+        setTimeout(()=>{ chip.style.transition=".4s"; chip.style.opacity="0"; chip.style.transform="translateY(-6px)";
+          setTimeout(()=>chip.remove(),420); endBusy(); },560);
+      } else {
+        chip.classList.remove("proc"); chip.classList.add("bad");
+        chip.innerHTML=`<span class="dotc"></span>${d.id} · YANA XATO`;
+        log(`<span class="amb">✗ ${d.id}</span> bug hali bor — yana <span class="amb">O'LIK XATGA</span> qaytdi`);
+        dead++; // re-counted as a death event
+        setTimeout(()=>{ flyTo(chip,"#dlist",()=>{ chip.remove(); dlq.push(d); renderDLQ(); }); endBusy(); update(); },360);
+      }
+    },620);
+  }
+
+  function pushRecovered(d){
+    const l=$("#rlist"); const e=l.querySelector(".empty"); if(e) e.remove();
+    $("#recCount").textContent=recovered;
+    const el=document.createElement("div"); el.className="rec";
+    el.innerHTML=`<span class="dotc"></span>${d.id}<span class="r-reason">was: ${d.reason}</span>`;
+    l.prepend(el);
+  }
+
+  /* ---- flying token A→B ---- */
+  function flyTo(fromEl,toSel,onArrive){
+    const a=fromEl.getBoundingClientRect();
+    const b=$(toSel).getBoundingClientRect();
+    const tok=document.createElement("div"); tok.className="token dead";
+    const sx=a.left+a.width/2, sy=a.top+a.height/2;
+    tok.style.left=(sx-6.5)+"px"; tok.style.top=(sy-6.5)+"px";
+    document.body.appendChild(tok);
+    const dx=(b.left+b.width/2)-sx, dy=(b.top+28)-sy;
+    requestAnimationFrame(()=>{ tok.style.transform=`translate(${dx}px,${dy}px)`; });
+    setTimeout(()=>{ onArrive&&onArrive(); tok.remove(); },560);
+  }
+
+  /* ---- ledger / verdict / log ---- */
+  function update(){
+    $("#sFed").textContent=fed; $("#sDone").textContent=done; $("#sDead").textContent=dlq.length;
+    $("#lDead").textContent=dlq.length; $("#lReplay").textContent=replayed; $("#lRec").textContent=recovered;
+    renderVerdict();
+  }
+  function renderVerdict(){
+    const v=$("#verdict");
+    if(fed===0){ v.innerHTML=`Press <b>OQIM YUBORISH</b>. Jobs that exhaust their retries don't vanish — they drop into the <b class="a">dead-letter queue</b>, where you can inspect them.`; return; }
+    if(dlq.length>0 && recovered===0){
+      v.innerHTML= fixed
+        ? `<b>${dlq.length}</b> dead letters waiting. The bug is <b class="g">fixed</b> — hit <b>QAYTA YUBORISH</b> and they'll finally <b class="g">succeed</b>.`
+        : `<b>${dlq.length}</b> jobs in the DLQ. Replay now and they <b class="a">die again</b> — first flip <b>TUZATILDI</b> to fix the root cause, <i>then</i> replay.`;
+      return;
+    }
+    v.innerHTML=`<b>${recovered}</b> recovered after replay. A DLQ turns <b class="a">silent data loss</b> into a <b class="g">visible, recoverable queue</b> you can inspect and replay.`;
+  }
+
+  const logEl=$("#log");
+  function log(html){ const d=document.createElement("div"); d.innerHTML=html; logEl.prepend(d);
+    while(logEl.children.length>40) logEl.lastChild.remove(); }
+
+  $("#footnote").innerHTML =
+    `When a job's retries are <b>exhausted</b>, BullMQ doesn't drop it — the terminal failure lands in a <a class="a">dead-letter queue</a> with its <b>failedReason</b> and original <b>data</b>. `+
+    `That stored data is what makes <span class="g">replay</span> possible: fix the root cause, re-enqueue, and the once-dead job finally <span class="g">completes</span>. `+
+    `Replaying <i>before</i> the fix just kills it again — a DLQ is a parking lot for humans, not an auto-retry loop.`;
+
+  renderVerdict();
+})();
+</script>
+</body>
+</html>

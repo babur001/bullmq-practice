@@ -1,0 +1,382 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lesson 02 — Job Lifecycle (OGOH dispatch console)</title>
+<style>
+  :root{
+    --bg:#0b0b0d; --bg2:#070708;
+    --panel:#141416; --panel2:#1a1a1d; --slot:#202024;
+    --border:#2a2a2f; --border-soft:rgba(255,255,255,.06);
+    --text:#ededed; --muted:#7c7c83; --muted2:#55555b;
+    --coral:#ff6c5a; --coral-deep:#e63c2c; --coral-glow:rgba(255,92,70,.40);
+    --emerald:#37d39a; --emerald-dim:rgba(55,211,154,.14);
+    --amber:#e3a23a; --amber-dim:rgba(227,162,58,.14);
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;}
+  body{
+    background:
+      repeating-linear-gradient(45deg,rgba(255,255,255,.013) 0 2px,transparent 2px 11px),
+      radial-gradient(120% 80% at 50% -10%,#15151a 0%,var(--bg) 55%,var(--bg2) 100%);
+    color:var(--text); font:14px/1.55 var(--sans);
+    min-height:100vh; padding:22px 20px 0; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:760px;margin:0 auto;}
+
+  /* top bar */
+  .topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;}
+  .brand{display:flex;align-items:center;gap:10px;}
+  .brand .mark{color:var(--coral);display:flex;}
+  .brand .name{font-weight:700;letter-spacing:.34em;font-size:15px;}
+  .pill{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border);
+    background:var(--panel);border-radius:999px;padding:6px 13px;font-size:11px;
+    letter-spacing:.16em;text-transform:uppercase;color:var(--muted);}
+  .pill .dot{width:7px;height:7px;border-radius:50%;background:var(--muted2);}
+  .pill.on{color:var(--emerald);border-color:rgba(55,211,154,.32);}
+  .pill.on .dot{background:var(--emerald);box-shadow:0 0 8px var(--emerald);}
+  .rule{height:1px;background:var(--border-soft);margin:14px 0 16px;}
+
+  /* object header */
+  .obj-tag{font-size:11px;letter-spacing:.2em;color:var(--muted2);text-transform:uppercase;margin-bottom:4px;}
+  .obj-head{display:flex;align-items:center;justify-content:space-between;gap:12px;}
+  .obj-title{font-size:25px;font-weight:700;letter-spacing:-.01em;}
+
+  /* controls row */
+  .controls{display:flex;align-items:center;gap:12px;margin:18px 0 8px;flex-wrap:wrap;}
+  .btn{background:var(--coral);color:#2a0a05;border:0;border-radius:10px;padding:11px 20px;
+    font:inherit;font-weight:700;letter-spacing:.04em;cursor:pointer;
+    box-shadow:0 0 0 1px rgba(255,120,90,.4),0 0 26px 2px var(--coral-glow);
+    transition:transform .08s ease;}
+  .btn:active{transform:scale(.96);}
+  .btn.sec{background:var(--slot);color:var(--text);border:1px solid var(--border);box-shadow:none;}
+  .btn:disabled{opacity:.5;cursor:not-allowed;}
+  .toggle{display:inline-flex;align-items:center;gap:9px;cursor:pointer;user-select:none;
+    font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);}
+  .toggle .sw{width:38px;height:21px;border-radius:999px;background:var(--slot);
+    border:1px solid var(--border);position:relative;transition:.18s;}
+  .toggle .sw::after{content:"";position:absolute;top:2px;left:2px;width:15px;height:15px;
+    border-radius:50%;background:var(--muted);transition:.18s;}
+  .toggle.on{color:var(--amber);}
+  .toggle.on .sw{background:var(--amber-dim);border-color:rgba(227,162,58,.5);}
+  .toggle.on .sw::after{left:19px;background:var(--amber);box-shadow:0 0 7px var(--amber);}
+
+  /* state machine */
+  .machine{position:relative;margin:14px 0 4px;}
+  .lane{display:grid;grid-template-columns:1fr 14px 1fr 14px 1fr;align-items:stretch;gap:0;}
+  .arrow{display:flex;align-items:center;justify-content:center;color:var(--muted2);font-size:18px;}
+  .branch{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;}
+  .node{position:relative;background:var(--panel);border:1px solid var(--border);border-radius:14px;
+    padding:12px 12px 11px;transition:.2s;overflow:hidden;min-height:118px;}
+  .node .role{font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted2);}
+  .node .nm{font-weight:700;font-size:13.5px;margin:2px 0 8px;letter-spacing:.02em;}
+  .node.delayed .nm{color:var(--muted);} .node.waiting .nm{color:var(--text);}
+  .node.active .nm{color:var(--coral);} .node.completed .nm{color:var(--emerald);} .node.failed .nm{color:var(--amber);}
+  .node .pool{display:flex;flex-wrap:wrap;gap:5px;min-height:30px;align-content:flex-start;}
+  .node .cnt-lbl{position:absolute;bottom:9px;right:12px;font-size:9px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--muted2);}
+  .node .cnt-lbl b{font-family:var(--mono);font-size:15px;color:var(--text);font-weight:700;}
+  .node.hit{border-color:var(--coral);box-shadow:0 0 22px var(--coral-glow);}
+  .node.delayed{border-style:dashed;}
+  .delay-feed{grid-column:1 / -1;display:flex;align-items:center;gap:8px;margin-top:10px;
+    font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted2);}
+  .delay-feed .ln{flex:1;height:1px;background:var(--border-soft);}
+
+  /* job chip */
+  .chip{display:inline-flex;align-items:center;gap:5px;background:var(--slot);border:1px solid var(--border);
+    border-radius:7px;padding:3px 8px;font-family:var(--mono);font-size:11px;cursor:pointer;
+    transition:.15s;color:var(--text);}
+  .chip:hover{border-color:var(--muted);}
+  .chip.sel{border-color:#fff;box-shadow:0 0 0 1px #fff;}
+  .chip.active{border-color:var(--coral);color:var(--coral);animation:proc 1s linear infinite;}
+  .chip.ok{border-color:rgba(55,211,154,.4);color:var(--emerald);}
+  .chip.bad{border-color:rgba(227,162,58,.4);color:var(--amber);}
+  .chip .led{width:6px;height:6px;border-radius:50%;background:currentColor;}
+  @keyframes proc{0%,100%{box-shadow:0 0 0 0 var(--coral-glow);}50%{box-shadow:0 0 10px 1px var(--coral-glow);}}
+
+  /* counts ledger */
+  .ledger{margin-top:16px;background:var(--panel);border:1px solid var(--border);border-radius:16px;
+    padding:16px 18px;display:flex;align-items:center;gap:20px;}
+  .ledger .col{text-align:center;min-width:54px;}
+  .ledger .num{font-family:var(--mono);font-size:32px;font-weight:700;line-height:1;}
+  .ledger .num.mut{color:var(--muted);} .ledger .num.coral{color:var(--coral);}
+  .ledger .num.eme{color:var(--emerald);} .ledger .num.amb{color:var(--amber);}
+  .ledger .l{font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted2);margin-top:5px;}
+  .ledger .verdict{flex:1;font-size:12.5px;color:var(--muted);line-height:1.5;
+    border-left:1px solid var(--border-soft);padding-left:18px;}
+  .ledger .verdict b{color:var(--text);}
+
+  /* inspector */
+  .inspect{margin-top:14px;background:#070709;border:1px solid var(--border);border-radius:12px;
+    padding:14px 16px;font-family:var(--mono);font-size:12px;min-height:96px;}
+  .inspect .hd{display:flex;align-items:center;gap:9px;margin-bottom:9px;}
+  .inspect .hd .id{font-weight:700;color:var(--text);font-size:13px;}
+  .inspect .badge{font-size:9px;letter-spacing:.1em;text-transform:uppercase;padding:2px 8px;border-radius:999px;}
+  .badge.idle{background:var(--slot);color:var(--muted);}
+  .badge.act{background:rgba(255,92,70,.16);color:var(--coral);}
+  .badge.got{background:var(--emerald-dim);color:var(--emerald);}
+  .badge.warn{background:var(--amber-dim);color:var(--amber);}
+  .inspect .row{padding:2px 0;color:var(--muted2);}
+  .inspect .row .k{color:var(--muted);}
+  .inspect .row .v{color:var(--text);}
+  .inspect .row .v.ok{color:var(--emerald);} .inspect .row .v.bad{color:var(--amber);}
+  .inspect .empty{color:var(--muted2);}
+
+  .footnote{font-size:12.5px;color:var(--muted);max-width:720px;margin:16px 2px 0;line-height:1.6;}
+  .footnote b{color:var(--coral);} .footnote .g{color:var(--emerald);} .footnote .a{color:var(--amber);}
+
+  /* bottom nav chrome */
+  .nav{position:sticky;bottom:0;margin:26px -20px 0;padding:12px 0 16px;
+    background:linear-gradient(180deg,transparent,var(--bg2) 40%);
+    display:flex;justify-content:center;gap:34px;border-top:1px solid var(--border-soft);}
+  .nav .tab{display:flex;flex-direction:column;align-items:center;gap:5px;font-size:11px;
+    letter-spacing:.05em;color:var(--muted2);}
+  .nav .tab.active{color:var(--coral);}
+  .nav .tab svg{opacity:.85;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- top bar -->
+  <div class="topbar">
+    <div class="brand">
+      <span class="mark" aria-hidden="true">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M5 17h14"/><path d="M6 17a6 6 0 0 1 12 0"/><path d="M12 5V3"/><path d="M19 9l1-1"/><path d="M5 9 4 8"/>
+        </svg>
+      </span>
+      <span class="name">OGOH</span>
+    </div>
+    <span class="pill on"><span class="dot"></span>Broker onlayn</span>
+  </div>
+
+  <div class="rule"></div>
+
+  <!-- object header -->
+  <div class="obj-tag">Lesson 02 · Ish hayoti</div>
+  <div class="obj-head">
+    <div class="obj-title">Job&nbsp;Lifecycle</div>
+    <span class="pill"><span class="dot"></span>getJobCounts()</span>
+  </div>
+
+  <!-- controls -->
+  <div class="controls">
+    <button class="btn" id="add">ISH QO'SHISH · ADD JOB</button>
+    <div class="toggle" id="failTog"><span class="sw"></span>XATO BERSIN · MAKE IT FAIL</div>
+    <button class="btn sec" id="reset">TOZALASH · RESET</button>
+  </div>
+
+  <!-- state machine -->
+  <div class="machine">
+    <div class="lane">
+      <div class="node waiting" id="n_waiting">
+        <div class="role">queue</div><div class="nm">NAVBAT · waiting</div>
+        <div class="pool" id="p_waiting"></div>
+        <div class="cnt-lbl"><b id="c_waiting">0</b></div>
+      </div>
+      <div class="arrow">→</div>
+      <div class="node active" id="n_active">
+        <div class="role">worker claims it</div><div class="nm">FAOL · active</div>
+        <div class="pool" id="p_active"></div>
+        <div class="cnt-lbl"><b id="c_active">0</b></div>
+      </div>
+      <div class="arrow">→</div>
+      <div class="node" id="n_split" style="background:transparent;border:0;min-height:0;"></div>
+    </div>
+    <div class="branch">
+      <div class="node completed" id="n_completed">
+        <div class="role">returned ✅</div><div class="nm">BAJARILDI · completed</div>
+        <div class="pool" id="p_completed"></div>
+        <div class="cnt-lbl"><b id="c_completed">0</b></div>
+      </div>
+      <div class="node failed" id="n_failed">
+        <div class="role">threw ❌</div><div class="nm">XATO · failed</div>
+        <div class="pool" id="p_failed"></div>
+        <div class="cnt-lbl"><b id="c_failed">0</b></div>
+      </div>
+    </div>
+    <div class="delay-feed">
+      <span>KECHIKKAN · delayed</span>
+      <div class="pool" id="p_delayed" style="min-height:0;"></div>
+      <span class="ln"></span><span>→ navbatga tushadi</span>
+      <button class="btn sec" id="addDelay" style="padding:5px 12px;font-size:11px;">+ delayed</button>
+    </div>
+  </div>
+
+  <!-- counts ledger (getJobCounts) -->
+  <div class="ledger">
+    <div class="col"><div class="num mut" id="l_waiting">0</div><div class="l">NAVBAT</div></div>
+    <div class="col"><div class="num coral" id="l_active">0</div><div class="l">FAOL</div></div>
+    <div class="col"><div class="num eme" id="l_completed">0</div><div class="l">BAJARILDI</div></div>
+    <div class="col"><div class="num amb" id="l_failed">0</div><div class="l">XATO</div></div>
+    <div class="verdict" id="verdict"></div>
+  </div>
+
+  <!-- inspector -->
+  <div class="inspect" id="inspect"></div>
+
+  <p class="footnote" id="footnote"></p>
+
+  <!-- bottom nav chrome -->
+  <div class="nav">
+    <div class="tab active">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17h14"/><path d="M6 17a6 6 0 0 1 12 0"/><path d="M12 5V3"/></svg>
+      Trevoga</div>
+    <div class="tab">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M16 4a3 3 0 0 1 0 6"/><path d="M21 20a6 6 0 0 0-3-5"/></svg>
+      Aholi</div>
+    <div class="tab">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+      Tarix</div>
+    <div class="tab">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4 3 7v13l6-3 6 3 6-3V4l-6 3-6-3Z"/><path d="M9 4v13"/><path d="M15 7v13"/></svg>
+      Xarita</div>
+    <div class="tab">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg>
+      Sozlama</div>
+  </div>
+
+</div>
+
+<script>
+(() => {
+  const $ = (s)=>document.querySelector(s);
+  let seq = 0, sale = 1040, sel = null, makeFail = false, activeBusy = false;
+  // jobs: { id, saleId, state, ret, reason }
+  const jobs = [];
+
+  // ---- fail toggle ----
+  $("#failTog").addEventListener("click",()=>{
+    makeFail = !makeFail;
+    $("#failTog").classList.toggle("on",makeFail);
+    render();
+  });
+
+  // ---- add job ----
+  $("#add").addEventListener("click",()=>addJob("waiting"));
+  $("#addDelay").addEventListener("click",()=>addJob("delayed"));
+  $("#reset").addEventListener("click",()=>{
+    jobs.length=0; seq=0; sale=1040; sel=null; activeBusy=false; render();
+  });
+
+  function addJob(initial){
+    const j = { id: ++seq, saleId: ++sale, state: initial, willFail: makeFail, ret:null, reason:null };
+    jobs.push(j);
+    if(initial==="delayed"){
+      // becomes waiting after a short scheduled gap
+      setTimeout(()=>{ j.state="waiting"; render(); pump(); }, 1600);
+    }
+    render(); pump();
+  }
+
+  // ---- the worker: claims one waiting job at a time ----
+  function pump(){
+    if(activeBusy) return;
+    const next = jobs.find(j=>j.state==="waiting");
+    if(!next) return;
+    activeBusy = true;
+    next.state = "active";
+    render(); flash("#n_active");
+    setTimeout(()=>{
+      if(next.willFail){
+        next.state="failed";
+        next.reason = "PaymentDeclined: card refused";
+        flash("#n_failed");
+      } else {
+        next.state="completed";
+        next.ret = { charged:true, saleId: next.saleId };
+        flash("#n_completed");
+      }
+      activeBusy=false;
+      render();
+      pump(); // pick up the next waiting job
+    }, 1500);
+  }
+
+  function flash(sel){ const el=$(sel); el.classList.add("hit"); setTimeout(()=>el.classList.remove("hit"),460); }
+
+  // ---- chip factory ----
+  function chip(j){
+    const cls = j.state==="active"?"active":j.state==="completed"?"ok":j.state==="failed"?"bad":"";
+    return `<span class="chip ${cls} ${sel===j.id?"sel":""}" data-id="${j.id}"><span class="led"></span>#${j.id}</span>`;
+  }
+
+  function render(){
+    const buckets = {waiting:[],active:[],completed:[],failed:[],delayed:[]};
+    jobs.forEach(j=>buckets[j.state].push(j));
+    for(const st of Object.keys(buckets)){
+      const pool=$("#p_"+st); if(pool) pool.innerHTML = buckets[st].map(chip).join("");
+      const c=$("#c_"+st); if(c) c.textContent = buckets[st].length;
+      const l=$("#l_"+st); if(l) l.textContent = buckets[st].length;
+    }
+    renderVerdict(buckets);
+    renderInspect();
+    setFoot();
+  }
+
+  // ---- click a chip to inspect ----
+  document.addEventListener("click",(e)=>{
+    const c=e.target.closest(".chip"); if(!c) return;
+    sel = +c.dataset.id; render();
+  });
+
+  function renderInspect(){
+    const box=$("#inspect");
+    const j = jobs.find(x=>x.id===sel);
+    if(!j){
+      box.innerHTML = `<div class="empty">// click a job chip to inspect its data &amp; result.<br>// each job carries <span class="row" style="display:inline"><span class="k">job.data</span></span> in, and keeps a <span class="k">returnvalue</span> or <span class="k">failedReason</span> out.</div>`;
+      return;
+    }
+    const bcls = j.state==="active"?"act":j.state==="completed"?"got":j.state==="failed"?"warn":"idle";
+    let out = "";
+    out += `<div class="hd"><span class="id">job #${j.id}</span><span class="badge ${bcls}">${j.state}</span></div>`;
+    out += `<div class="row"><span class="k">job.data</span> = <span class="v">{ saleId: ${j.saleId} }</span></div>`;
+    if(j.state==="completed"){
+      out += `<div class="row"><span class="k">job.returnvalue</span> = <span class="v ok">{ charged: true, saleId: ${j.saleId} }</span></div>`;
+      out += `<div class="row" style="color:var(--muted)">// result is durable — stored on the job in Redis.</div>`;
+    } else if(j.state==="failed"){
+      out += `<div class="row"><span class="k">job.failedReason</span> = <span class="v bad">"${j.reason}"</span></div>`;
+      out += `<div class="row" style="color:var(--muted)">// reason is retained too — failed jobs aren't erased.</div>`;
+    } else if(j.state==="active"){
+      out += `<div class="row" style="color:var(--coral)">// processor running… returnvalue not set yet.</div>`;
+    } else {
+      out += `<div class="row" style="color:var(--muted)">// ${j.state} — no worker has claimed it yet; no result.</div>`;
+    }
+    box.innerHTML = out;
+  }
+
+  function renderVerdict(b){
+    const v=$("#verdict");
+    const total=jobs.length;
+    if(total===0){
+      v.innerHTML = `Press <b>ISH QO'SHISH</b>. A job enters <b>waiting</b>, a worker claims it (<b>active</b>), then it ends in <b>completed</b> or <b>failed</b>.`;
+      return;
+    }
+    const parts = [];
+    if(b.delayed.length) parts.push(`${b.delayed.length} delayed`);
+    if(b.waiting.length) parts.push(`${b.waiting.length} waiting`);
+    if(b.active.length) parts.push(`<b style="color:var(--coral)">${b.active.length} active</b>`);
+    if(b.completed.length) parts.push(`<b style="color:var(--emerald)">${b.completed.length} completed</b>`);
+    if(b.failed.length) parts.push(`<b style="color:var(--amber)">${b.failed.length} failed</b>`);
+    v.innerHTML = `<b>getJobCounts()</b> → ${parts.join(" · ")}. `+
+      (b.active.length ? `A worker is processing one job now — only <b>one</b> moves through <i>active</i> at a time here.`
+       : b.waiting.length ? `Jobs sit in <b>waiting</b> until the worker is free — the queue is durable.`
+       : `Finished jobs keep their <b>returnvalue</b> / <b style="color:var(--amber)">failedReason</b>; states don't vanish.`);
+  }
+
+  function setFoot(){
+    $("#footnote").innerHTML =
+      `A job is a state machine: <b>waiting → active → completed | failed</b> (with <b>delayed</b> as an optional pre-state). `+
+      `<b>job.data</b> flows in; a <span class="g">returnvalue</span> (on success) or <span class="a">failedReason</span> (on failure) is stored back on the job in Redis. `+
+      `<b>getJobCounts()</b> just tallies how many jobs sit in each bucket right now — states are <i>durable</i>, results are <i>retained</i>.`;
+  }
+
+  render();
+})();
+</script>
+</body>
+</html>
