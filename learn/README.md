@@ -37,8 +37,9 @@ Verify Redis any time with: `docker exec learn-broker-redis redis-cli ping` → 
 | 06  | Dead Letter Queues                  | Handling jobs that fail permanently; inspecting & replaying failures                       |
 | 07  | Idempotency & exactly-once          | Job IDs, deduplication, why "exactly-once" is a lie and what to do about it                |
 | 08  | Events & pub/sub                    | `QueueEvents`, fan-out, the difference between a _queue_ and a _topic_                     |
-| 09  | Real pattern: API → queue           | Wire a BullMQ producer into your Express server; the transactional outbox idea             |
-| 10  | Observability                       | Bull Board dashboard; optionally a live view in your web app                               |
+| 09  | Transactional outbox                | Wire a producer into your Express server; the dual-write problem, outbox + relay, CDC       |
+| 10  | Sagas                               | Distributed transactions across steps; compensations, auth/capture, orchestration           |
+| 11  | Observability                       | Bull Board dashboard — see counts, DLQ, retries live; use it to verify your Saga            |
 
 ## The big picture (where we're headed)
 

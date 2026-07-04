@@ -1,8 +1,12 @@
+import { queuesRouter } from "@/dashboard";
 import { env } from "@learn-broker/env/server";
 import cors from "cors";
 import express from "express";
 
 const app = express();
+
+// Bull Board — live queue dashboard at http://localhost:3000/admin/queues
+app.use("/admin/queues", queuesRouter);
 
 // app.use(
 //   cors({

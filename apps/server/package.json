@@ -10,6 +10,8 @@
     "start": "node dist/index.mjs"
   },
   "dependencies": {
+    "@bull-board/api": "^8.1.0",
+    "@bull-board/express": "^8.1.0",
     "@learn-broker/db": "workspace:*",
     "@learn-broker/env": "workspace:*",
     "bullmq": "^5.78.0",

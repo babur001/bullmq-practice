@@ -7,6 +7,10 @@ const mock_products = {
   3: 520,
 };
 
+export interface ISagaPayload {
+  total_sum: number;
+}
+
 const create_sale = async (
   products: { product_id: keyof typeof mock_products; quantity: number }[],
 ) => {
@@ -17,36 +21,29 @@ const create_sale = async (
       return acc;
     }, 0);
 
-    // process.exit(1);
-
     const [new_sale] = await tx.insert(t.orders).values({ total: total_sum }).returning();
 
     if (!new_sale) throw new Error("FAILED_TO_CREATE_SALE");
 
     const [outbox] = await tx
-      .insert(t.outbox)
+      .insert(t.saga_outbox)
       .values({
-        payload: { products, total_sum, sale_id: new_sale.id },
-        topic: "charge",
+        orderId: new_sale.id,
+        step: "authorize",
         published: false,
+        payload: { products, total_sum } satisfies ISagaPayload,
       })
       .returning();
 
-    if (!outbox) throw new Error("FAILED_TO_CREATE_SALE");
-
-    // process.exit(1);
+    if (!outbox) throw new Error("FAILED_TO_CREATE_SAGA");
 
     return { id: new_sale.id };
   });
 };
 
-await Promise.all(
-  new Array(300).fill("").map(() => {
-    return create_sale([
-      { product_id: 1, quantity: 1 },
-      { product_id: 2, quantity: 3 },
-    ]);
-  }),
-);
+await create_sale([
+  { product_id: 1, quantity: 1 },
+  { product_id: 2, quantity: 3 },
+]);
 
 process.exit(0);
