@@ -31,10 +31,5 @@
     "@types/node": "catalog:",
     "typescript": "catalog:"
   },
-  "packageManager": "pnpm@10.28.2",
-  "pnpm": {
-    "overrides": {
-      "ioredis": "^5.11.0"
-    }
-  }
+  "packageManager": "pnpm@10.28.2"
 }

@@ -1,22 +1,34 @@
-const products = {
-  "1": {
-    title: "Iphone 14 pro",
-    price: 15_000_000,
-  },
-  "2": {
-    title: "Macbook M4 Pro",
-    price: 22_500_000,
-  },
-  "3": {
-    title: "Samsung S22",
-    price: 18_200_000,
-  },
-  "4": {
-    title: "Iwatch 8",
-    price: 7_500_000,
-  },
-};
+import { products_mock, type ProductKeys } from "@/sale/products.mock";
+import { db } from "@learn-broker/db";
+import * as t from "@learn-broker/db/schema/index";
 
-export const createSaleUseCase = () => {
-  //
+export const createSaleUseCase = async (product_ids: ProductKeys[]) => {
+  const total_sum = product_ids.reduce((acc, curr) => {
+    const product = products_mock[curr];
+    acc += product.price;
+    return acc;
+  }, 0);
+
+  await db.transaction(async (tx) => {
+    const [new_sale] = await tx
+      .insert(t.orders)
+      .values({
+        total_sum,
+        status: "pending",
+      })
+      .returning();
+
+    if (!new_sale) {
+      throw new Error("FAILED_TO_CREATE_SALE");
+    }
+
+    const [outbox] = await tx
+      .insert(t.saga_outbox)
+      .values({ sale_id: new_sale.id })
+      .returning();
+
+    if (!outbox) throw new Error("FAILED_TO_CREATE_SAGA");
+
+    return { new_sale_id: new_sale.id };
+  });
 };

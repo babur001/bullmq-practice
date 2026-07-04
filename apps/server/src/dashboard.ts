@@ -8,12 +8,8 @@ import { Queue } from "bullmq";
 // key namespace — creating one here inspects that queue WITHOUT importing the worker
 // files (which would start workers or fire jobs on import). Add your saga queues here.
 const QUEUE_NAMES = [
-  "payments",
-  "shipping",
-  "notification",
-  "warehouse",
-  "orders",
-  "orders-dlq",
+  "SAGA_FORWARD_QUEUE",
+  "SAGA_BACKWARD_QUEUE",
   // saga task → add e.g. "refund", "release-stock" as you create them
 ];
 
