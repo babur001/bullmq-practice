@@ -96,6 +96,13 @@ fine, because the enqueue is **idempotent** (Lesson 07/08). The full formula:
 > **atomic outbox write** (no lost, no orphan) + **at-least-once relay** (guaranteed
 > emission) + **idempotent consumer** (duplicates free) = **effectively-once**, API → worker.
 
+> 🎛️ **Interactive visual:** open `learn/visuals/09-transactional-outbox.html`. It's a
+> **crash simulator** — pick **Naive** vs **Outbox**, *arm a crash* at a specific gap,
+> and place an order. In Naive you'll watch it end up **LOST** (committed order, no job)
+> or **ORPHAN** (job, no order). Switch to **Outbox**, arm the *same* crashes, and watch
+> the relay recover every one → **SAFE**. Seeing the outbox row sit `unpublished` after a
+> crash and then get re-driven is the whole lesson in one click.
+
 ---
 
 ## 4. Build it piece by piece

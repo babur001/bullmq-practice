@@ -6,6 +6,7 @@ export const env = createEnv({
   server: {
     DATABASE_URL: z.string().min(1),
     REDIS_URL: z.string().min(1).default("redis://localhost:6379"),
+    KAFKA_BROKERS: z.string().min(1).default("localhost:9092"),
     CORS_ORIGIN: z.url(),
     NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
   },

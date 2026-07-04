@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lesson 09 — Transactional Outbox (crash simulator)</title>
+<style>
+  :root{
+    --bg:#0b0b0d; --bg2:#070708;
+    --panel:#141416; --panel2:#1a1a1d; --slot:#202024;
+    --border:#2a2a2f; --border-soft:rgba(255,255,255,.06);
+    --text:#ededed; --muted:#7c7c83; --muted2:#55555b;
+    --coral:#ff6c5a; --coral-deep:#e63c2c; --coral-glow:rgba(255,92,70,.40);
+    --emerald:#37d39a; --emerald-dim:rgba(55,211,154,.14);
+    --amber:#e3a23a; --amber-dim:rgba(227,162,58,.14);
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;}
+  body{
+    background:
+      repeating-linear-gradient(45deg,rgba(255,255,255,.013) 0 2px,transparent 2px 11px),
+      radial-gradient(120% 80% at 50% -10%,#15151a 0%,var(--bg) 55%,var(--bg2) 100%);
+    color:var(--text); font:14px/1.55 var(--sans);
+    min-height:100vh; padding:26px 20px 40px; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:860px;margin:0 auto;}
+  h1{font-size:22px;margin:0 0 4px;letter-spacing:-.01em;}
+  h1 .tag{font-size:11px;letter-spacing:.2em;color:var(--muted2);text-transform:uppercase;display:block;margin-bottom:6px;}
+  .sub{color:var(--muted);margin:0 0 18px;max-width:760px;font-size:13px;}
+  .sub code{font-family:var(--mono);color:var(--text);font-size:12px;}
+
+  /* controls */
+  .controls{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:16px;}
+  .row{display:flex;gap:14px;align-items:center;flex-wrap:wrap;}
+  .row + .row{margin-top:12px;}
+  .lbl{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted2);width:78px;flex:none;}
+  .seg{display:inline-flex;gap:5px;background:var(--slot);border:1px solid var(--border);border-radius:10px;padding:4px;}
+  .seg button{border:0;background:transparent;color:var(--muted);cursor:pointer;padding:8px 15px;border-radius:7px;
+    font:inherit;font-size:12px;letter-spacing:.06em;text-transform:uppercase;font-weight:600;transition:.15s;}
+  .seg button.active{background:var(--panel2);color:var(--text);box-shadow:inset 0 0 0 1px var(--border);}
+  .seg button.active.ob{color:var(--emerald);} .seg button.active.nv{color:var(--coral);}
+  .crash{display:flex;gap:6px;flex-wrap:wrap;}
+  .crash button{border:1px solid var(--border);background:var(--slot);color:var(--muted);cursor:pointer;
+    padding:7px 11px;border-radius:8px;font:inherit;font-size:11.5px;transition:.15s;}
+  .crash button.on{border-color:var(--amber);color:var(--amber);background:var(--amber-dim);}
+  .btns{margin-left:auto;display:flex;gap:8px;}
+  .btn{background:var(--coral);color:#2a0a05;border:0;border-radius:9px;padding:9px 18px;font:inherit;font-weight:700;cursor:pointer;}
+  .btn.sec{background:var(--slot);color:var(--text);border:1px solid var(--border);}
+  .btn:disabled{opacity:.5;cursor:not-allowed;}
+
+  /* pipeline */
+  .pipe{display:flex;align-items:center;gap:6px;margin:6px 0 16px;flex-wrap:wrap;}
+  .stage{flex:1;min-width:96px;background:var(--panel);border:1px solid var(--border);border-radius:11px;
+    padding:11px 8px;text-align:center;transition:.2s;position:relative;}
+  .stage .s-t{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted2);}
+  .stage .s-n{font-weight:700;font-size:12.5px;margin-top:3px;font-family:var(--mono);}
+  .stage.active{border-color:var(--coral);box-shadow:0 0 20px var(--coral-glow);}
+  .stage.crash{border-color:var(--amber);box-shadow:0 0 20px var(--amber-dim);}
+  .stage.ok{border-color:rgba(55,211,154,.4);}
+  .arrow{color:var(--muted2);flex:none;font-family:var(--mono);}
+
+  /* systems grid */
+  .grid{display:grid;grid-template-columns:1.5fr 1fr 1fr;gap:12px;}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:13px 14px;min-height:150px;}
+  .card h3{margin:0 0 10px;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:7px;}
+  .card h3 .badge{font-size:9px;letter-spacing:.08em;padding:2px 6px;border-radius:999px;background:var(--slot);color:var(--muted2);}
+  .tbl-name{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted2);margin:6px 0 4px;}
+  .rows{display:flex;flex-direction:column;gap:4px;}
+  .r{display:flex;align-items:center;justify-content:space-between;gap:6px;font-family:var(--mono);font-size:11.5px;
+    background:var(--slot);border:1px solid var(--border);border-radius:7px;padding:5px 8px;transition:.2s;}
+  .r .pill{font-size:9px;letter-spacing:.06em;text-transform:uppercase;padding:1px 6px;border-radius:999px;}
+  .r.pending{border-color:rgba(227,162,58,.35);} .r.pending .pill{background:var(--amber-dim);color:var(--amber);}
+  .r.charged{border-color:rgba(55,211,154,.4);} .r.charged .pill{background:var(--emerald-dim);color:var(--emerald);}
+  .r.lost{border-color:var(--amber);animation:pulseA 1.4s infinite;} .r.lost .pill{background:var(--amber-dim);color:var(--amber);}
+  .r.uncommitted{opacity:.45;border-style:dashed;}
+  .r.published .pill{background:var(--emerald-dim);color:var(--emerald);}
+  .r.unpublished .pill{background:var(--slot);color:var(--muted);}
+  .r.orphan{border-color:var(--coral);animation:pulseC 1.2s infinite;} .r.orphan .pill{background:var(--coral-glow);color:var(--coral);}
+  .r.dedup{border-color:rgba(55,211,154,.4);} .r.dedup .pill{background:var(--emerald-dim);color:var(--emerald);}
+  @keyframes pulseA{0%,100%{box-shadow:0 0 0 rgba(227,162,58,0);}50%{box-shadow:0 0 16px var(--amber-dim);}}
+  @keyframes pulseC{0%,100%{box-shadow:0 0 0 rgba(255,92,70,0);}50%{box-shadow:0 0 16px var(--coral-glow);}}
+  .empty{color:var(--muted2);font-size:11px;font-style:italic;padding:6px 2px;}
+  .relay-dot{width:7px;height:7px;border-radius:50%;background:var(--muted2);}
+  .relay-dot.tick{background:var(--emerald);box-shadow:0 0 8px var(--emerald);}
+
+  /* verdict + counters */
+  .verdict{margin:14px 0 12px;border-radius:12px;padding:13px 16px;border:1px solid var(--border);
+    background:var(--panel);font-size:13.5px;display:flex;align-items:center;gap:12px;}
+  .verdict .tagv{font-family:var(--mono);font-weight:700;font-size:12px;letter-spacing:.1em;padding:4px 10px;border-radius:8px;flex:none;}
+  .verdict.safe{border-color:rgba(55,211,154,.4);} .verdict.safe .tagv{background:var(--emerald-dim);color:var(--emerald);}
+  .verdict.bad{border-color:var(--coral);} .verdict.bad .tagv{background:var(--coral-glow);color:var(--coral);}
+  .verdict.warn{border-color:var(--amber);} .verdict.warn .tagv{background:var(--amber-dim);color:var(--amber);}
+  .verdict .txt{color:var(--muted);} .verdict .txt b{color:var(--text);}
+
+  .counters{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;}
+  .ct{flex:1;min-width:90px;background:var(--panel);border:1px solid var(--border);border-radius:11px;padding:11px 12px;}
+  .ct .n{font-family:var(--mono);font-size:24px;font-weight:700;line-height:1;}
+  .ct .k{font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted2);margin-top:5px;}
+  .ct.bad .n{color:var(--coral);} .ct.warn .n{color:var(--amber);} .ct.ok .n{color:var(--emerald);}
+
+  .log{background:#070709;border:1px solid var(--border);border-radius:12px;padding:11px 14px;
+    font-family:var(--mono);font-size:11.5px;max-height:150px;overflow:auto;}
+  .log div{padding:1.5px 0;color:var(--muted2);}
+  .log .hl{color:var(--text);} .log .ok{color:var(--emerald);} .log .cor{color:var(--coral);} .log .amb{color:var(--amber);}
+
+  .foot{font-size:12.5px;color:var(--muted);max-width:800px;margin:16px 0 0;line-height:1.6;}
+  .foot b{color:var(--coral);} .foot .g{color:var(--emerald);}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1><span class="tag">Lesson 09 · Tranzaksion outbox</span>Will the order survive a crash?</h1>
+  <p class="sub">
+    <code>POST /orders</code> must write to <b>two systems</b> — Postgres and Redis — with no shared
+    transaction. Pick a strategy, <b>arm a crash</b> at a gap, place an order, and watch where it ends up.
+    <b>Naive</b> leaks; <b>Outbox</b> recovers.
+  </p>
+
+  <div class="controls">
+    <div class="row">
+      <span class="lbl">Strategy</span>
+      <div class="seg" id="mode">
+        <button class="nv active" data-m="naive">Naive dual-write</button>
+        <button class="ob" data-m="outbox">Outbox + relay</button>
+      </div>
+    </div>
+    <div class="row">
+      <span class="lbl">Crash at</span>
+      <div class="crash" id="crash"></div>
+    </div>
+    <div class="row">
+      <span class="lbl">Run</span>
+      <div class="seg" style="background:transparent;border:0;padding:0">
+        <span id="relayState" style="display:flex;align-items:center;gap:7px;font-size:11px;color:var(--muted2)">
+          <span class="relay-dot" id="relayDot"></span> relay <span id="relayTxt">idle</span></span>
+      </div>
+      <div class="btns">
+        <button class="btn" id="place">▶ Place order</button>
+        <button class="btn sec" id="reset">Reset</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="pipe" id="pipe"></div>
+
+  <div class="grid">
+    <div class="card">
+      <h3>Postgres <span class="badge" id="pgBadge">source of truth</span></h3>
+      <div class="tbl-name">orders</div>
+      <div class="rows" id="orders"><div class="empty">no rows</div></div>
+      <div class="tbl-name" id="obName" style="margin-top:10px;display:none">outbox</div>
+      <div class="rows" id="outbox"></div>
+    </div>
+    <div class="card">
+      <h3>payments queue</h3>
+      <div class="rows" id="queue"><div class="empty">empty</div></div>
+    </div>
+    <div class="card">
+      <h3>worker</h3>
+      <div class="rows" id="worker"><div class="empty">idle</div></div>
+    </div>
+  </div>
+
+  <div class="verdict" id="verdict"><span class="tagv" id="vtag">—</span><span class="txt" id="vtxt">Place an order to begin.</span></div>
+
+  <div class="counters">
+    <div class="ct ok"><div class="n" id="cPlaced">0</div><div class="k">Placed</div></div>
+    <div class="ct ok"><div class="n" id="cCharged">0</div><div class="k">Charged</div></div>
+    <div class="ct warn"><div class="n" id="cLost">0</div><div class="k">Lost</div></div>
+    <div class="ct bad"><div class="n" id="cOrphan">0</div><div class="k">Orphan</div></div>
+    <div class="ct bad"><div class="n" id="cDup">0</div><div class="k">Duplicate</div></div>
+    <div class="ct ok"><div class="n" id="cSafe">0</div><div class="k">Safe</div></div>
+  </div>
+
+  <div class="log" id="log"></div>
+
+  <p class="foot" id="foot"></p>
+</div>
+
+<script>
+(() => {
+  const $ = (s)=>document.querySelector(s);
+  const sleep = (ms)=>new Promise(r=>setTimeout(r,ms));
+
+  const CRASH = {
+    naive: [
+      {id:"none",  t:"No crash"},
+      {id:"n-db",  t:"After DB insert, before enqueue"},
+      {id:"n-enq", t:"After enqueue, before DB insert"},
+    ],
+    outbox: [
+      {id:"none",  t:"No crash"},
+      {id:"o-commit", t:"Before COMMIT"},
+      {id:"o-relay",  t:"After COMMIT, before relay"},
+      {id:"o-mark",   t:"After add, before mark published"},
+    ],
+  };
+  const STAGES = {
+    naive:  [["API","/orders"],["Postgres","INSERT"],["Redis","add()"],["Worker","charge"]],
+    outbox: [["API","/orders"],["Postgres","tx: order+outbox"],["Relay","poll→add"],["Worker","charge"]],
+  };
+
+  let mode="naive", crashGap="none", running=false, busyRelay=false;
+  let oid=0, obid=0;
+  const orders=[], outbox=[], queue=[], worker=[];
+  const ct={placed:0,charged:0,lost:0,orphan:0,dup:0,safe:0};
+
+  // ---- build controls ----
+  function buildCrash(){
+    const c=$("#crash"); c.innerHTML="";
+    CRASH[mode].forEach(o=>{
+      const b=document.createElement("button"); b.textContent=o.t; b.dataset.id=o.id;
+      b.className = o.id===crashGap ? "on":"";
+      b.onclick=()=>{ crashGap=o.id; buildCrash(); };
+      c.appendChild(b);
+    });
+  }
+  function buildPipe(){
+    const p=$("#pipe"); p.innerHTML="";
+    STAGES[mode].forEach((s,i)=>{
+      const el=document.createElement("div"); el.className="stage"; el.id="stg"+i;
+      el.innerHTML=`<div class="s-t">${s[0]}</div><div class="s-n">${s[1]}</div>`;
+      p.appendChild(el);
+      if(i<STAGES[mode].length-1){ const a=document.createElement("span"); a.className="arrow"; a.textContent="→"; p.appendChild(a); }
+    });
+  }
+  $("#mode").onclick=(e)=>{ const b=e.target.closest("button"); if(!b||running)return;
+    mode=b.dataset.m; crashGap="none";
+    [...$("#mode").children].forEach(x=>x.classList.toggle("active",x===b));
+    $("#obName").style.display = mode==="outbox"?"block":"none";
+    $("#pgBadge").textContent = mode==="outbox"?"one atomic tx":"source of truth";
+    buildCrash(); buildPipe(); setFoot();
+  };
+
+  function stage(i,cls){ const el=$("#stg"+i); if(!el)return; el.className="stage"+(cls?" "+cls:""); }
+  function clearStages(){ STAGES[mode].forEach((_,i)=>stage(i,"")); }
+
+  // ---- renderers ----
+  function render(){
+    const ro=$("#orders"); ro.innerHTML = orders.length? "" : '<div class="empty">no rows</div>';
+    orders.forEach(o=>{ const d=document.createElement("div"); d.className="r "+o.cls;
+      d.innerHTML=`<span>order #${o.id}</span><span class="pill">${o.status}</span>`; ro.appendChild(d); });
+    const rb=$("#outbox"); rb.innerHTML = outbox.length? "" : (mode==="outbox"?'<div class="empty">no rows</div>':"");
+    outbox.forEach(o=>{ const d=document.createElement("div"); d.className="r "+(o.published?"published":"unpublished");
+      d.innerHTML=`<span>#${o.id} ${o.topic}</span><span class="pill">${o.published?"published":"pending"}</span>`; rb.appendChild(d); });
+    const rq=$("#queue"); rq.innerHTML = queue.length? "" : '<div class="empty">empty</div>';
+    queue.forEach(j=>{ const d=document.createElement("div"); d.className="r "+(j.cls||"");
+      d.innerHTML=`<span>${j.jobId}</span><span class="pill">${j.tag||"queued"}</span>`; rq.appendChild(d); });
+    const rw=$("#worker"); rw.innerHTML = worker.length? "" : '<div class="empty">idle</div>';
+    worker.forEach(w=>{ const d=document.createElement("div"); d.className="r "+w.cls;
+      d.innerHTML=`<span>${w.txt}</span><span class="pill">${w.tag}</span>`; rw.appendChild(d); });
+    $("#cPlaced").textContent=ct.placed; $("#cCharged").textContent=ct.charged;
+    $("#cLost").textContent=ct.lost; $("#cOrphan").textContent=ct.orphan;
+    $("#cDup").textContent=ct.dup; $("#cSafe").textContent=ct.safe;
+  }
+  function verdict(kind,tag,txt){ const v=$("#verdict"); v.className="verdict "+kind;
+    $("#vtag").textContent=tag; $("#vtxt").innerHTML=txt; }
+  let logEl=$("#log");
+  function log(html){ const d=document.createElement("div"); d.innerHTML=html; logEl.prepend(d);
+    while(logEl.children.length>50) logEl.lastChild.remove(); }
+
+  // ---- charge (idempotent, keyed by order) ----
+  const charged=new Set();
+  function doCharge(orderId,fromDedup){
+    const o=orders.find(x=>x.id===orderId);
+    if(charged.has(orderId)){ worker.unshift({txt:`order #${orderId}`,tag:"deduped",cls:"dedup"}); log(`<span class="ok">worker: order #${orderId} already charged → skip</span>`); return; }
+    charged.add(orderId); ct.charged++;
+    if(o){ o.status="charged"; o.cls="charged"; }
+    worker.unshift({txt:`order #${orderId}`,tag:"charged",cls:"charged"});
+    log(`<span class="ok">worker: charged order #${orderId} ✅</span>`);
+  }
+
+  // ---- the relay (durable retry driver) ----
+  async function relayTick(){
+    if(busyRelay) return; busyRelay=true;
+    const pending=outbox.filter(o=>o.committed && !o.published);
+    if(pending.length){ $("#relayDot").classList.add("tick"); $("#relayTxt").textContent="tick"; }
+    for(const row of pending){
+      if(mode==="outbox") stage(2,"active");
+      const existing=queue.find(j=>j.jobId===`outbox:${row.id}`);
+      if(existing){ existing.tag="deduped"; existing.cls="dedup"; ct.dup && 0; log(`<span class="ok">relay: outbox #${row.id} already enqueued → dedup</span>`); }
+      else { queue.push({jobId:`outbox:${row.id}`, orderId:row.orderId, tag:"queued"}); log(`<span class="cor">relay: add(jobId: outbox:${row.id})</span>`); }
+      render(); await sleep(360);
+
+      if(row.armMark){ row.armMark=false; // crash after add, before mark
+        log(`<span class="amb">💥 relay crashed after add, before mark published</span>`);
+        stage(2,"crash"); render(); await sleep(650); stage(2,"");
+        busyRelay=false; return; // row stays unpublished → next tick re-adds (deduped) then marks
+      }
+      row.published=true; log(`<span class="hl">relay: mark outbox #${row.id} published ✅</span>`);
+      render(); await sleep(220);
+      doCharge(row.orderId);
+      // this run reached safety
+      ct.safe++; verdict("safe","SAFE","<b>Recovered.</b> The outbox row survived the crash; the relay re-drove it to Redis, and the idempotent enqueue meant no duplicate. Order charged exactly once.");
+      render();
+    }
+    $("#relayDot").classList.remove("tick"); $("#relayTxt").textContent = outbox.some(o=>o.committed&&!o.published)?"pending":"idle";
+    busyRelay=false;
+  }
+  setInterval(()=>{ if(mode==="outbox") relayTick(); }, 1500);
+
+  // ---- place order ----
+  async function place(){
+    if(running) return; running=true; $("#place").disabled=true; clearStages();
+    worker.length=0; render();
+    if(mode==="naive") await placeNaive(); else await placeOutbox();
+    running=false; $("#place").disabled=false;
+  }
+
+  async function placeNaive(){
+    const id=++oid;
+    stage(0,"active"); log(`<span class="hl">API: POST /orders</span>`); await sleep(400);
+
+    if(crashGap==="n-enq"){ // reversed ordering: enqueue first
+      stage(2,"active"); queue.push({jobId:`charge:${id}`,orderId:id,tag:"queued",cls:"orphan"}); log(`<span class="cor">Redis: add(charge:${id})</span>`); render(); await sleep(500);
+      stage(2,"crash"); log(`<span class="amb">💥 crashed after enqueue, before DB insert</span>`); render(); await sleep(650);
+      ct.orphan++; verdict("bad","ORPHAN","<b>Orphan job.</b> A charge sits in the queue for an order that was never written. A worker will charge a <b>ghost order</b> — and you can't un-charge.");
+      render(); return;
+    }
+
+    stage(1,"active"); orders.push({id,status:"pending",cls:"pending"}); log(`<span class="hl">Postgres: INSERT order #${id} (pending)</span>`); render(); await sleep(500);
+
+    if(crashGap==="n-db"){
+      stage(1,"crash"); log(`<span class="amb">💥 crashed after DB insert, before enqueue</span>`); render(); await sleep(650);
+      const o=orders.find(x=>x.id===id); o.cls="lost"; o.status="lost";
+      ct.lost++; verdict("warn","LOST","<b>Lost order.</b> The order is committed as <code>pending</code> forever — no charge job was ever emitted, and nothing retries it. Silent stuck order.");
+      render(); return;
+    }
+
+    stage(2,"active"); queue.push({jobId:`charge:${id}`,orderId:id,tag:"queued"}); log(`<span class="cor">Redis: add(charge:${id})</span>`); render(); await sleep(450);
+    stage(3,"active"); doCharge(id); ct.placed++; ct.safe++;
+    verdict("safe","OK","<b>Happy path.</b> No crash, so both writes landed. But notice: <b>nothing protected you</b> — a crash one line earlier would have leaked. Naive works only when the machine never dies.");
+    render(); await sleep(200); clearStages();
+  }
+
+  async function placeOutbox(){
+    const id=++oid, ob=++obid;
+    stage(0,"active"); log(`<span class="hl">API: POST /orders</span>`); await sleep(360);
+    stage(1,"active"); log(`<span class="hl">Postgres: BEGIN</span>`);
+    orders.push({id,status:"pending",cls:"pending uncommitted"});
+    outbox.push({id:ob,orderId:id,topic:"charge",published:false,committed:false});
+    log(`<span class="hl">  INSERT order #${id} + outbox #${ob} (uncommitted)</span>`); render(); await sleep(560);
+
+    if(crashGap==="o-commit"){
+      stage(1,"crash"); log(`<span class="amb">💥 crashed before COMMIT → transaction rolls back</span>`);
+      orders.pop(); outbox.pop(); render(); await sleep(700);
+      ct.safe++; verdict("safe","SAFE","<b>Clean rollback.</b> Neither row committed — the order and its outbox event both vanish together. The client simply retries. No lost, no orphan.");
+      render(); return;
+    }
+
+    // COMMIT
+    const o=orders.find(x=>x.id===id); o.cls="pending";
+    const row=outbox.find(x=>x.id===ob); row.committed=true;
+    ct.placed++; log(`<span class="ok">Postgres: COMMIT ✅ (order + outbox row durable)</span>`); render(); await sleep(320);
+    stage(1,"ok");
+
+    if(crashGap==="o-relay"){
+      log(`<span class="amb">💥 process died after COMMIT, before relay ran</span>`); await sleep(500);
+      verdict("warn","WAITING","Process crashed — but the outbox row is <b>durable and unpublished</b>. Watch the <b>relay</b> pick it up on its next tick and recover it…");
+      render(); // relay loop will catch it → SAFE
+      return;
+    }
+    if(crashGap==="o-mark"){ row.armMark=true; log(`<span class="amb">crash armed: relay will die after add, before mark</span>`); }
+
+    // let the relay handle it (kick immediately for responsiveness)
+    verdict("safe","…","Committed. The relay will publish it.");
+    render(); await sleep(200); await relayTick();
+  }
+
+  $("#place").onclick=place;
+  $("#reset").onclick=()=>{ if(running)return;
+    orders.length=outbox.length=queue.length=worker.length=0; charged.clear();
+    oid=obid=0; Object.keys(ct).forEach(k=>ct[k]=0); clearStages();
+    verdict("","—","Place an order to begin."); $("#verdict").className="verdict";
+    logEl.innerHTML=""; render();
+  };
+
+  function setFoot(){ $("#foot").innerHTML = mode==="naive"
+    ? `<b>Naive:</b> two writes, two systems, no transaction. Every crash gap leaks — <b>lost</b> (committed order, no job) or <b>orphan</b> (job, no order). Switch to <span class="g">Outbox</span> and try the same crashes.`
+    : `<span class="g">Outbox:</span> the enqueue becomes a row written <b>inside the same DB transaction</b> as the order — so one COMMIT covers both. A separate <b>relay</b> is the durable retry driver: it re-drives any unpublished row to Redis, and the idempotent <code>jobId: outbox:id</code> makes duplicates harmless. Crash anywhere → it recovers.`; }
+
+  buildCrash(); buildPipe(); render(); setFoot();
+})();
+</script>
+</body>
+</html>

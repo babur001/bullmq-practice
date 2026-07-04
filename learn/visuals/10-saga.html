@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lesson 10 — Saga Orchestrator (transit-line simulator)</title>
+<style>
+  /* ============ a fresh, LIGHT "transit / blueprint" design system ============ */
+  :root{
+    --paper:#f4f2ec; --paper2:#efece4; --card:#ffffff;
+    --ink:#1d2530; --ink2:#3c4657; --muted:#8a8f9c; --hair:#e2ddd2; --hair2:#d3cdbf;
+    --fwd:#3b5bdb; --fwd-soft:#e8ecfb; --fwd-ink:#25379a;
+    --ok:#2f9e44; --ok-soft:#e6f4ea;
+    --warn:#dd8a10; --warn-soft:#fbf1dd;
+    --stop:#d63a3a; --stop-soft:#fbe6e6;
+    --hold:#7a4ed9; --hold-soft:#efe8fb;
+    --mono:"SF Mono",ui-monospace,Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,sans-serif;
+    --serif:"Iowan Old Style"," ",Georgia,serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;}
+  body{
+    background:
+      linear-gradient(0deg,rgba(0,0,0,.015),rgba(0,0,0,.015)),
+      radial-gradient(60% 40% at 50% 0%, #faf8f2 0%, var(--paper) 60%);
+    background-color:var(--paper);
+    color:var(--ink); font:15px/1.6 var(--sans); -webkit-font-smoothing:antialiased;
+    padding:34px 22px 60px;
+    /* faint blueprint grid */
+    background-image:
+      linear-gradient(rgba(59,91,219,.035) 1px,transparent 1px),
+      linear-gradient(90deg,rgba(59,91,219,.035) 1px,transparent 1px);
+    background-size:26px 26px;
+  }
+  .wrap{max-width:900px;margin:0 auto;}
+
+  header .kicker{font:600 11px/1 var(--mono);letter-spacing:.24em;text-transform:uppercase;color:var(--fwd);}
+  header h1{font:600 30px/1.1 var(--serif);margin:10px 0 6px;letter-spacing:-.01em;}
+  header p{margin:0;color:var(--ink2);max-width:640px;}
+  header p b{color:var(--ink);}
+
+  .panel{background:var(--card);border:1px solid var(--hair);border-radius:16px;
+    box-shadow:0 1px 0 rgba(0,0,0,.02),0 10px 30px -22px rgba(30,40,70,.35);}
+
+  /* controls */
+  .controls{margin:22px 0 26px;padding:16px 18px;display:flex;gap:22px;align-items:flex-end;flex-wrap:wrap;}
+  .ctl{display:flex;flex-direction:column;gap:7px;}
+  .ctl .cl{font:600 10px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--muted);}
+  .chips{display:flex;gap:5px;}
+  .chips button{font:500 12.5px/1 var(--sans);border:1px solid var(--hair2);background:var(--paper2);color:var(--ink2);
+    padding:8px 12px;border-radius:9px;cursor:pointer;transition:.15s;}
+  .chips button:hover{border-color:var(--fwd);}
+  .chips button.on{background:var(--fwd);border-color:var(--fwd);color:#fff;box-shadow:0 4px 12px -4px var(--fwd);}
+  .chips.fail button.on[data-v="transient"]{background:var(--warn);border-color:var(--warn);box-shadow:0 4px 12px -4px var(--warn);}
+  .chips.fail button.on[data-v="permanent"]{background:var(--stop);border-color:var(--stop);box-shadow:0 4px 12px -4px var(--stop);}
+  .go{margin-left:auto;display:flex;gap:9px;}
+  .btn{font:600 14px/1 var(--sans);border:0;border-radius:10px;padding:12px 20px;cursor:pointer;
+    background:var(--ink);color:#fff;transition:.15s;}
+  .btn:hover{transform:translateY(-1px);}
+  .btn.ghost{background:transparent;color:var(--ink2);border:1px solid var(--hair2);}
+  .btn:disabled{opacity:.45;cursor:not-allowed;transform:none;}
+
+  /* the transit line */
+  .map{padding:34px 30px 26px;position:relative;overflow:hidden;}
+  .line{position:relative;height:120px;margin:8px 12px 0;}
+  .rail{position:absolute;left:0;right:0;top:26px;height:4px;background:var(--hair2);border-radius:2px;}
+  .rail .fill{position:absolute;left:0;top:0;height:100%;width:0;border-radius:2px;
+    background:linear-gradient(90deg,var(--fwd),#5a77e6);transition:width .5s ease;}
+  .rail.rev{top:auto;bottom:20px;background:transparent;}
+  .rail.rev .fill{right:0;left:auto;background:linear-gradient(270deg,var(--stop),#e56a6a);transition:width .5s ease;}
+  .stations{position:absolute;left:0;right:0;top:0;display:flex;justify-content:space-between;}
+  .st{display:flex;flex-direction:column;align-items:center;width:64px;position:relative;}
+  .st .dot{width:20px;height:20px;border-radius:50%;background:#fff;border:3px solid var(--hair2);
+    margin-top:17px;transition:.25s;z-index:2;}
+  .st.done .dot{border-color:var(--ok);background:var(--ok);box-shadow:0 0 0 4px var(--ok-soft);}
+  .st.active .dot{border-color:var(--fwd);background:#fff;box-shadow:0 0 0 5px var(--fwd-soft);animation:ping 1s infinite;}
+  .st.retry .dot{border-color:var(--warn);background:#fff;box-shadow:0 0 0 5px var(--warn-soft);animation:ping .6s infinite;}
+  .st.fail .dot{border-color:var(--stop);background:var(--stop);box-shadow:0 0 0 5px var(--stop-soft);}
+  .st.comp .dot{border-color:var(--stop);background:#fff;box-shadow:0 0 0 5px var(--stop-soft);}
+  @keyframes ping{0%,100%{transform:scale(1);}50%{transform:scale(1.12);}}
+  .st .lbl{font:600 10.5px/1.2 var(--mono);letter-spacing:.06em;color:var(--ink2);margin-top:10px;text-align:center;text-transform:uppercase;}
+  .st .sub{font:400 9.5px/1.2 var(--sans);color:var(--muted);margin-top:3px;text-align:center;min-height:12px;}
+  .st.done .lbl{color:var(--ok);} .st.fail .lbl,.st.comp .lbl{color:var(--stop);}
+  /* the moving order token */
+  .token{position:absolute;top:20px;width:34px;height:34px;border-radius:11px;left:0;transform:translateX(-50%);
+    background:var(--card);border:1.5px solid var(--fwd);display:flex;align-items:center;justify-content:center;
+    font:700 12px var(--mono);color:var(--fwd-ink);box-shadow:0 8px 20px -8px rgba(59,91,219,.6);
+    transition:left .55s cubic-bezier(.5,0,.3,1),border-color .3s,color .3s;z-index:5;}
+  .token.stop{border-color:var(--stop);color:var(--stop);box-shadow:0 8px 20px -8px rgba(214,58,58,.6);}
+  .comp-tag{position:absolute;bottom:-2px;font:600 9px/1 var(--mono);color:var(--stop);white-space:nowrap;
+    transform:translateX(-50%);opacity:0;transition:.3s;text-align:center;}
+  .comp-tag.show{opacity:1;}
+
+  /* holds + verdict */
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:24px;}
+  .hold{padding:14px 16px;}
+  .hold h3{font:600 10px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin:0 0 12px;}
+  .hrow{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-top:1px solid var(--hair);}
+  .hrow:first-of-type{border-top:0;}
+  .hrow .nm{font:500 13px var(--sans);color:var(--ink2);}
+  .state{font:600 10.5px/1 var(--mono);letter-spacing:.04em;padding:5px 9px;border-radius:7px;background:var(--paper2);color:var(--muted);text-transform:uppercase;}
+  .state.held{background:var(--hold-soft);color:var(--hold);} .state.active{background:var(--fwd-soft);color:var(--fwd-ink);}
+  .state.captured{background:var(--ok-soft);color:var(--ok);} .state.released,.state.voided{background:var(--stop-soft);color:var(--stop);}
+
+  .verdict{margin-top:16px;padding:15px 18px;border-radius:14px;border:1px solid var(--hair);background:var(--card);
+    display:flex;gap:14px;align-items:flex-start;}
+  .verdict .tag{font:700 11px/1 var(--mono);letter-spacing:.1em;padding:6px 11px;border-radius:8px;flex:none;text-transform:uppercase;}
+  .verdict.run .tag{background:var(--fwd-soft);color:var(--fwd-ink);}
+  .verdict.win .tag{background:var(--ok-soft);color:var(--ok);}
+  .verdict.cancel .tag{background:var(--stop-soft);color:var(--stop);}
+  .verdict .vx{color:var(--ink2);font-size:13.5px;line-height:1.55;}
+  .verdict .vx b{color:var(--ink);}
+
+  .log{margin-top:16px;padding:12px 16px;font:12px/1.7 var(--mono);color:var(--muted);max-height:150px;overflow:auto;}
+  .log div{padding:1px 0;} .log .f{color:var(--fwd-ink);} .log .o{color:var(--ok);} .log .w{color:var(--warn);} .log .s{color:var(--stop);} .log .i{color:var(--ink2);}
+
+  footer{margin-top:22px;color:var(--ink2);font-size:13px;line-height:1.6;max-width:760px;}
+  footer b{color:var(--fwd-ink);} footer .r{color:var(--stop);}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="kicker">Lesson 10 · Saga Orchestrator</div>
+    <h1>When you can't go forward, go back.</h1>
+    <p>An order rides the line one station at a time. Arm a failure on any step: a <b>transient</b>
+       one retries and rolls on; a <b>permanent</b> one flips the train around and <b>compensates in
+       reverse</b>. Watch the money: it's only ever <b>held</b> until the last stop — so an early
+       cancel needs no refund.</p>
+  </header>
+
+  <div class="panel controls">
+    <div class="ctl">
+      <span class="cl">Failure on step</span>
+      <div class="chips" id="failStep"></div>
+    </div>
+    <div class="ctl">
+      <span class="cl">Failure type</span>
+      <div class="chips fail" id="failMode">
+        <button data-v="none" class="on">None</button>
+        <button data-v="transient">Transient</button>
+        <button data-v="permanent">Permanent</button>
+      </div>
+    </div>
+    <div class="go">
+      <button class="btn" id="run">▶ Dispatch order</button>
+      <button class="btn ghost" id="reset">Reset</button>
+    </div>
+  </div>
+
+  <div class="panel map">
+    <div class="line">
+      <div class="rail"><div class="fill" id="fillF"></div></div>
+      <div class="rail rev"><div class="fill" id="fillR"></div></div>
+      <div class="stations" id="stations"></div>
+      <div class="token" id="token">#1</div>
+    </div>
+  </div>
+
+  <div class="cols">
+    <div class="panel hold">
+      <h3>Payment</h3>
+      <div class="hrow"><span class="nm">Authorization (hold)</span><span class="state" id="hAuth">—</span></div>
+      <div class="hrow"><span class="nm">Capture (money taken)</span><span class="state" id="hCap">—</span></div>
+    </div>
+    <div class="panel hold">
+      <h3>Inventory</h3>
+      <div class="hrow"><span class="nm">Reservation</span><span class="state" id="hRes">—</span></div>
+      <div class="hrow"><span class="nm">Shipment</span><span class="state" id="hShip">—</span></div>
+    </div>
+  </div>
+
+  <div class="verdict run" id="verdict"><span class="tag" id="vtag">Ready</span>
+    <span class="vx" id="vtx">Pick a step + failure type, then dispatch. With <b>None</b>, the order runs clean to <b>COMPLETED</b>.</span></div>
+
+  <div class="log panel" id="log"></div>
+
+  <footer id="foot"></footer>
+</div>
+
+<script>
+(() => {
+  const $=(s)=>document.querySelector(s);
+  const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
+
+  // forward states; each carries its compensation + how it touches holds
+  const STEPS=[
+    {key:"reserve",  lbl:"Reserve",   sub:"stock",       comp:"release stock"},
+    {key:"authorize",lbl:"Authorize", sub:"hold funds",  comp:"void auth"},
+    {key:"ship",     lbl:"Ship",      sub:"dispatch",    comp:"recall (manual)"},
+    {key:"capture",  lbl:"Capture",   sub:"take money",  comp:"refund"},
+    {key:"complete", lbl:"Complete",  sub:"done",        comp:null},
+  ];
+  let failStep="ship", failMode="none", running=false;
+
+  // build station chips + station nodes
+  const fs=$("#failStep");
+  STEPS.slice(0,4).forEach(s=>{ const b=document.createElement("button");
+    b.textContent=s.lbl; b.dataset.k=s.key; b.className=s.key===failStep?"on":"";
+    b.onclick=()=>{ if(running)return; failStep=s.key; [...fs.children].forEach(x=>x.classList.toggle("on",x===b)); };
+    fs.appendChild(b); });
+  $("#failMode").onclick=(e)=>{ const b=e.target.closest("button"); if(!b||running)return;
+    failMode=b.dataset.v; [...$("#failMode").children].forEach(x=>x.classList.toggle("on",x===b)); };
+
+  const stEl=$("#stations");
+  STEPS.forEach((s,i)=>{ const d=document.createElement("div"); d.className="st"; d.id="st"+i;
+    d.innerHTML=`<div class="dot"></div><div class="lbl">${s.lbl}</div><div class="sub">${s.sub}</div>
+      <div class="comp-tag" id="ct${i}"></div>`;
+    stEl.appendChild(d); });
+
+  function posOf(i){ return (i/(STEPS.length-1))*100; }
+  function moveToken(i,stop){ const t=$("#token"); t.style.left=posOf(i)+"%"; t.classList.toggle("stop",!!stop); }
+  function stClass(i,cls){ $("#st"+i).className="st"+(cls?" "+cls:""); }
+  function fillF(i){ $("#fillF").style.width=posOf(i)+"%"; }
+  function fillR(pct){ $("#fillR").style.width=pct+"%"; }
+
+  function hold(id,txt,cls){ const e=$("#"+id); e.textContent=txt; e.className="state"+(cls?" "+cls:""); }
+  function verdict(kind,tag,tx){ $("#verdict").className="panel verdict "+kind; $("#vtag").textContent=tag; $("#vtx").innerHTML=tx; }
+  const logEl=$("#log");
+  function log(cls,html){ const d=document.createElement("div"); d.innerHTML=`<span class="${cls}">${html}</span>`; logEl.prepend(d);
+    while(logEl.children.length>40) logEl.lastChild.remove(); }
+
+  function resetVis(){
+    STEPS.forEach((_,i)=>{ stClass(i,""); $("#ct"+i).className="comp-tag"; $("#ct"+i).textContent=""; });
+    fillF(0); fillR(0); moveToken(0,false); $("#token").textContent="#1";
+    hold("hAuth","—",""); hold("hCap","—",""); hold("hRes","—",""); hold("hShip","—","");
+    verdict("run","Ready","Pick a step + failure type, then dispatch.");
+    logEl.innerHTML="";
+  }
+
+  async function applyHold(key){
+    if(key==="reserve"){ hold("hRes","Reserved","active"); }
+    if(key==="authorize"){ hold("hAuth","Held","held"); }
+    if(key==="ship"){ hold("hShip","Dispatched","active"); }
+    if(key==="capture"){ hold("hCap","Captured","captured"); hold("hAuth","Consumed","held"); }
+  }
+
+  async function run(){
+    if(running) return; running=true; $("#run").disabled=true; resetVis();
+    const failIdx = STEPS.findIndex(s=>s.key===failStep);
+    verdict("run","Running","Order dispatched. Advancing station by station…");
+
+    for(let i=0;i<STEPS.length;i++){
+      const s=STEPS[i];
+      moveToken(i,false); stClass(i,"active"); fillF(i);
+      log("f",`▶ ${s.lbl.toUpperCase()} …`); await sleep(700);
+
+      // failure lands on the chosen step
+      if(i===failIdx && failMode!=="none"){
+        if(failMode==="transient"){
+          for(let a=1;a<=2;a++){ stClass(i,"retry"); log("w",`  ⟳ ${s.lbl} failed (transient) — retry ${a}/2, backoff…`); await sleep(650); }
+          log("o",`  ✓ ${s.lbl} recovered on retry`);
+        } else { // permanent
+          stClass(i,"fail"); moveToken(i,true);
+          log("s",`  ✗ ${s.lbl} FAILED permanently (UnrecoverableError) → compensate`);
+          await sleep(750);
+          return compensate(i);
+        }
+      }
+
+      // step succeeded
+      stClass(i,"done"); await applyHold(s.key);
+      log("o",`  ✓ ${s.lbl} ok`); await sleep(150);
+    }
+
+    fillF(STEPS.length-1);
+    verdict("win","Completed","<b>Happy path.</b> All steps succeeded — money <b>captured</b>, order fulfilled. The hold became a real charge only at the final stop.");
+    running=false; $("#run").disabled=false;
+  }
+
+  async function compensate(failIdx){
+    // completed steps are those strictly before the failed one
+    const done=[];
+    for(let i=0;i<failIdx;i++) if(STEPS[i].comp) done.push(i);
+    log("s",`↩ COMPENSATING — unwinding ${done.length} step(s) in reverse`);
+    await sleep(400);
+
+    let capturedShipped=false;
+    for(let n=done.length-1, k=0;n>=0;n--,k++){
+      const i=done[n], s=STEPS[i];
+      moveToken(i,true); stClass(i,"comp");
+      $("#ct"+i).textContent=s.comp; $("#ct"+i).classList.add("show");
+      fillR( ((k+1)/done.length)*100 );
+      log("s",`  ↩ ${s.comp}`);
+      // reflect on the holds
+      if(s.key==="reserve") hold("hRes","Released","released");
+      if(s.key==="authorize") hold("hAuth","Voided","voided");
+      if(s.key==="ship"){ hold("hShip","Recall…","voided"); capturedShipped=true; }
+      if(s.key==="capture"){ hold("hCap","Refunded","voided"); capturedShipped=true; }
+      await sleep(700);
+    }
+
+    moveToken(0,true);
+    const neverCaptured = !done.includes(3);
+    if(neverCaptured && !capturedShipped){
+      verdict("cancel","Cancelled",`<b>Clean unwind.</b> Failure hit before <b>Capture</b>, so the money was only ever <b>held</b> — voiding the authorization costs nothing and <b>no refund is needed</b>. Stock released. This is exactly why <b>capture goes last</b>.`);
+    } else if(capturedShipped){
+      verdict("cancel","Cancelled",`<b>Expensive unwind.</b> A step <b>after</b> an irreversible action failed — you'd already shipped/captured, so compensation means a <b>physical recall or a real refund</b> (slow, human, costly). Push validation earlier so this can't happen.`);
+    } else {
+      verdict("cancel","Cancelled",`Order unwound to <b>CANCELLED</b>. Each compensation is an idempotent, retried job — a failing compensation goes to the DLQ and pages a human.`);
+    }
+    running=false; $("#run").disabled=false;
+  }
+
+  $("#run").onclick=run;
+  $("#reset").onclick=()=>{ if(running)return; resetVis(); };
+
+  $("#foot").innerHTML =
+    `<b>Forward</b> = retries win transient failures. <span class="r">Reverse</span> = a permanent failure runs each completed step's compensation, newest→oldest. `+
+    `The <b>authorize→capture</b> split is the trick: money is a reversible <i>hold</i> until the very last stop, so most cancels are free voids, not refunds. Try failing <b>Ship</b> permanently vs. failing <b>Capture</b> permanently and compare the unwind.`;
+
+  resetVis();
+})();
+</script>
+</body>
+</html>
