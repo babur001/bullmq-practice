@@ -1,5 +1,5 @@
 {
-  "id": "adf8e76d-204d-489b-87cc-c860a76c4bd7",
+  "id": "18ad8a2d-1c07-4781-8906-1c901d8f474d",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -15,15 +15,20 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
+        "step": {
+          "name": "step",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
         "status": {
           "name": "status",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
-          "default": "'pending'"
+          "notNull": true
         },
-        "total": {
-          "name": "total",
+        "total_sum": {
+          "name": "total_sum",
           "type": "integer",
           "primaryKey": false,
           "notNull": true
@@ -44,8 +49,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.outbox": {
-      "name": "outbox",
+    "public.saga_outbox": {
+      "name": "saga_outbox",
       "schema": "",
       "columns": {
         "id": {
@@ -54,20 +59,20 @@
           "primaryKey": true,
           "notNull": true
         },
-        "topic": {
-          "name": "topic",
+        "step": {
+          "name": "step",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "payload": {
-          "name": "payload",
-          "type": "jsonb",
+        "sale_id": {
+          "name": "sale_id",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },
-        "published": {
-          "name": "published",
+        "is_published": {
+          "name": "is_published",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,

@@ -21,17 +21,19 @@ const create_sale = async (
       return acc;
     }, 0);
 
-    const [new_sale] = await tx.insert(t.orders).values({ total: total_sum }).returning();
+    const [new_sale] = await tx
+      .insert(t.orders)
+      .values({ total_sum, status: "pending", step: "forward" })
+      .returning();
 
     if (!new_sale) throw new Error("FAILED_TO_CREATE_SALE");
 
     const [outbox] = await tx
       .insert(t.saga_outbox)
       .values({
-        orderId: new_sale.id,
-        step: "authorize",
-        published: false,
-        payload: { products, total_sum } satisfies ISagaPayload,
+        sale_id: new_sale.id,
+        step: "initial",
+        is_published: false,
       })
       .returning();
 

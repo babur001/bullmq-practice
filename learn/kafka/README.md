@@ -12,6 +12,10 @@ The one-line thesis you'll spend Lesson 01 unpacking:
 > **durable, replayable log** — an event is *retained* and any number of readers replay it
 > at their own pace. That single difference reshapes everything downstream.
 
+**Before Lesson 01**, skim **`00-bullmq-to-kafka.md`** — a translation sheet that maps the
+BullMQ vocabulary you already own onto Kafka's, and flags the *false friends* (words that
+mean something different here) so the old mental model helps you instead of misleading you.
+
 ## How these lessons work
 
 Each lesson is a numbered markdown file with four parts:

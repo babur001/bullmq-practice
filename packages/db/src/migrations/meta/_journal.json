@@ -5,15 +5,8 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1782925773195,
-      "tag": "0000_gigantic_the_watchers",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1783190930570,
-      "tag": "0001_harsh_zzzax",
+      "when": 1783246036281,
+      "tag": "0000_boring_big_bertha",
       "breakpoints": true
     }
   ]

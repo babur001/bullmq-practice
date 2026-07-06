@@ -14,6 +14,7 @@ export const createSaleUseCase = async (product_ids: ProductKeys[]) => {
       .insert(t.orders)
       .values({
         total_sum,
+        step: "forward",
         status: "pending",
       })
       .returning();
@@ -24,7 +25,10 @@ export const createSaleUseCase = async (product_ids: ProductKeys[]) => {
 
     const [outbox] = await tx
       .insert(t.saga_outbox)
-      .values({ sale_id: new_sale.id })
+      .values({
+        sale_id: new_sale.id,
+        step: "initial",
+      })
       .returning();
 
     if (!outbox) throw new Error("FAILED_TO_CREATE_SAGA");

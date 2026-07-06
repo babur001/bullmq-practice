@@ -8,29 +8,42 @@ import {
   timestamp,
 } from "drizzle-orm/pg-core";
 
+export type TOrderStep = "forward" | "backward";
+
+type TSaleStatus = "pending" | "completed";
+
 export const orders = pgTable("orders", {
   id: uuid().defaultRandom().primaryKey(),
-  status: text("status")
-    .notNull()
-    .$type<"pending" | "in_payment" | "cancelled" | "completed">()
-    .default("pending"),
+  step: text().$type<TOrderStep>().notNull(),
+  status: text().notNull().$type<TSaleStatus>(),
   total_sum: integer().notNull(),
   created_at: timestamp().defaultNow().notNull(),
 });
 
-export type TSagaStep =
-  | "payment_authorize"
-  | "warehouse"
-  | "shipping"
-  | "payment_capture"
-  | "finalize"; // completed sets sale as finished and sends notifications
+export type TSagaForwardStep =
+  | "initial"
+  | "in_payment_authorize"
+  | "in_warehouse_reserve"
+  | "in_shipping"
+  | "in_payment_capture"
+  | "in_finalize"
+  | "completed";
+
+export type TSagaBackwardStep =
+  | "initial_return"
+  | "in_payment_authorize_return"
+  | "in_warehouse_reserve_return"
+  | "in_shipping_return"
+  | "in_payment_capture_return"
+  | "in_finalize_return"
+  | "completed_return";
 
 export const saga_outbox = pgTable("saga_outbox", {
   id: serial("id").primaryKey(),
+  step: text().notNull().$type<TSagaForwardStep | TSagaBackwardStep>(),
   sale_id: uuid().notNull(),
   is_published: boolean().notNull().default(false),
   created_at: timestamp().defaultNow().notNull(),
-  step: text().$type<TSagaStep>().notNull().default("payment_authorize"),
 });
 
 /**

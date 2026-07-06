@@ -1,6 +1,8 @@
-import type { TSagaStep } from "@learn-broker/db/schema/index";
+import type { TSagaBackwardStep, TSagaForwardStep } from "@learn-broker/db/schema/index";
 
 export interface ISagaJob {
   sale_id: string;
-  step: TSagaStep;
+  saga_outbox_id: number;
+  region: string;
+  step: TSagaForwardStep | TSagaBackwardStep;
 }
