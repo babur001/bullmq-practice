@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lesson 02 — Partition Router · Ink &amp; Signal</title>
+<style>
+  :root{
+    --ink:#0a0e17; --ink2:#070a11;
+    --panel:#10151f; --panel2:#161c28; --slot:#1c2432;
+    --line:#232c3d; --line-soft:rgba(140,165,210,.09);
+    --text:#e8ecf4; --muted:#8b93a7; --faint:#525a6e;
+    --cyan:#3ad2ff; --cyan-dim:rgba(58,210,255,.13); --cyan-glow:rgba(58,210,255,.34);
+    --violet:#9d8cff; --violet-dim:rgba(157,140,255,.15); --violet-glow:rgba(157,140,255,.32);
+    --amber:#f5a524; --amber-dim:rgba(245,165,36,.13);
+    --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;}
+  body{
+    background:
+      repeating-linear-gradient(0deg,rgba(140,165,210,.028) 0 1px,transparent 1px 7px),
+      radial-gradient(130% 90% at 50% -20%,#111826 0%,var(--ink) 58%,var(--ink2) 100%);
+    color:var(--text); font:14px/1.6 var(--sans);
+    min-height:100vh; padding:26px 22px 48px; -webkit-font-smoothing:antialiased;
+    letter-spacing:.005em;
+  }
+  .wrap{max-width:960px;margin:0 auto;}
+
+  /* ---- top rail ---- */
+  .rail{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;}
+  .mark{display:flex;align-items:center;gap:11px;font:600 12px/1 var(--mono);letter-spacing:.26em;color:var(--muted);}
+  .mark .glyph{width:22px;height:22px;border:1.5px solid var(--cyan);border-radius:6px;position:relative;flex:none;}
+  .mark .glyph::before,.mark .glyph::after{content:"";position:absolute;left:3px;right:3px;height:2px;background:var(--cyan);border-radius:2px;box-shadow:0 0 6px var(--cyan-glow);}
+  .mark .glyph::before{top:6px;} .mark .glyph::after{top:12px;opacity:.5;}
+  .status{font:11px/1 var(--mono);letter-spacing:.14em;color:var(--faint);text-transform:uppercase;
+    border:1px solid var(--line);border-radius:999px;padding:7px 13px;display:inline-flex;gap:8px;align-items:center;}
+  .status i{width:6px;height:6px;border-radius:50%;background:var(--cyan);box-shadow:0 0 8px var(--cyan-glow);font-style:normal;}
+
+  /* ---- hero ---- */
+  .eyebrow{font:11px/1 var(--mono);letter-spacing:.24em;text-transform:uppercase;color:var(--cyan);margin-bottom:12px;}
+  h1{font:600 27px/1.15 var(--mono);letter-spacing:-.01em;margin:0 0 8px;}
+  h1 .t{color:var(--cyan);}
+  .lede{color:var(--muted);font-size:14px;max-width:64ch;margin:0 0 22px;}
+
+  /* ---- routing pipeline (the signature) ---- */
+  .pipe{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px 18px 16px;margin-bottom:14px;position:relative;overflow:hidden;}
+  .pipe::after{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(90deg,transparent,var(--cyan-glow),transparent);
+    opacity:0;transform:translateX(-100%);}
+  .pipe.fire::after{animation:sweep .5s ease;}
+  .pipe.fire.keyless::after{background:linear-gradient(90deg,transparent,var(--violet-glow),transparent);}
+  @keyframes sweep{0%{opacity:.5;transform:translateX(-100%);}100%{opacity:0;transform:translateX(100%);}}
+
+  .flow{display:flex;align-items:stretch;gap:0;flex-wrap:wrap;}
+  .stage{flex:1;min-width:118px;display:flex;flex-direction:column;justify-content:center;gap:5px;
+    background:var(--ink);border:1px solid var(--line);border-radius:11px;padding:11px 13px;position:relative;transition:.18s;}
+  .stage .lab{font:10px/1 var(--mono);letter-spacing:.13em;text-transform:uppercase;color:var(--faint);}
+  .stage .val{font:14px/1.2 var(--mono);color:var(--text);word-break:break-all;}
+  .conn{display:flex;align-items:center;color:var(--faint);padding:0 6px;font-size:15px;}
+  .stage.dest{border-color:var(--line);}
+  .stage.dest.lit{border-color:var(--cyan);box-shadow:0 0 0 1px var(--cyan),0 0 22px var(--cyan-dim);}
+  .stage.dest.lit .val{color:var(--cyan);}
+  .pipe.keyless .stage.dest.lit{border-color:var(--violet);box-shadow:0 0 0 1px var(--violet),0 0 22px var(--violet-dim);}
+  .pipe.keyless .stage.dest.lit .val{color:var(--violet);}
+  .stage.dest .val{font-weight:600;}
+
+  /* ---- controls ---- */
+  .deck{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-bottom:10px;}
+  .field{display:flex;flex-direction:column;gap:6px;}
+  .field label{font:10px/1 var(--mono);letter-spacing:.15em;text-transform:uppercase;color:var(--faint);}
+  input[type=text]{background:var(--ink);border:1px solid var(--line);border-radius:10px;color:var(--text);
+    font:14px var(--mono);padding:11px 13px;width:200px;outline:none;transition:.15s;}
+  input:focus{border-color:var(--cyan);box-shadow:0 0 0 3px var(--cyan-dim);}
+  button{border:1px solid var(--line);background:var(--slot);color:var(--text);cursor:pointer;
+    font:600 12.5px var(--sans);padding:11px 15px;border-radius:10px;transition:.15s;white-space:nowrap;}
+  button:hover{border-color:var(--muted);}
+  button:focus-visible{outline:2px solid var(--cyan);outline-offset:2px;}
+  button.key{background:var(--cyan-dim);border-color:rgba(58,210,255,.4);color:var(--cyan);}
+  button.nul{background:var(--violet-dim);border-color:rgba(157,140,255,.4);color:var(--violet);}
+  button:active{transform:translateY(1px);}
+  .seg{display:inline-flex;gap:4px;background:var(--ink);border:1px solid var(--line);border-radius:11px;padding:4px;}
+  .seg button{border:0;background:transparent;padding:8px 15px;color:var(--muted);font:600 13px var(--mono);}
+  .seg button.active{background:var(--slot);color:var(--cyan);box-shadow:inset 0 0 0 1px var(--line);}
+  .row2{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;}
+  .row2 button{background:transparent;font-weight:500;color:var(--muted);}
+  .row2 button:hover{color:var(--text);}
+  .row2 .spacer{flex:1;}
+
+  .warn{border:1px solid var(--amber);background:var(--amber-dim);color:var(--amber);border-radius:11px;
+    padding:11px 14px;font-size:12.5px;margin-bottom:16px;display:none;}
+  .warn.show{display:block;}
+  .warn code{background:rgba(245,165,36,.16);color:var(--amber);}
+
+  /* ---- partitions: log tapes ---- */
+  .tapes{display:grid;gap:12px;overflow-x:auto;padding-bottom:4px;}
+  .tape{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden;
+    display:flex;flex-direction:column;min-height:190px;min-width:150px;transition:.18s;}
+  .tape.land{border-color:var(--cyan);box-shadow:0 0 24px var(--cyan-dim);}
+  .tape.land.keyless{border-color:var(--violet);box-shadow:0 0 24px var(--violet-dim);}
+  .tape-head{display:flex;align-items:center;justify-content:space-between;padding:11px 13px;border-bottom:1px solid var(--line-soft);background:var(--panel2);}
+  .tape-head .p{font:600 13px var(--mono);letter-spacing:.02em;}
+  .tape-head .p b{color:var(--cyan);}
+  .tape-head .cnt{font:10px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--faint);}
+  .tape-head .stk{font:9px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--violet);
+    border:1px solid rgba(157,140,255,.45);border-radius:999px;padding:3px 7px;opacity:0;transition:.2s;}
+  .tape-head .stk.on{opacity:1;}
+  .body{flex:1;padding:8px;display:flex;flex-direction:column;gap:5px;overflow-y:auto;max-height:360px;}
+  .rec{display:grid;grid-template-columns:30px 1fr;align-items:baseline;gap:9px;font:12px var(--mono);
+    background:var(--ink);border:1px solid var(--line-soft);border-radius:8px;padding:7px 9px;animation:drop .3s cubic-bezier(.4,0,.2,1);}
+  .rec .off{color:var(--faint);text-align:right;border-right:1px solid var(--line-soft);padding-right:8px;}
+  .rec .pl{display:flex;flex-direction:column;gap:2px;overflow:hidden;}
+  .rec .kk{color:var(--cyan);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .rec .kk.n{color:var(--violet);}
+  .rec .vv{color:var(--muted);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .empty{color:var(--faint);font:11px var(--mono);text-align:center;padding:26px 8px;opacity:.6;}
+  @keyframes drop{from{opacity:0;transform:translateY(-9px);}to{opacity:1;transform:none;}}
+
+  .legend{display:flex;gap:22px;flex-wrap:wrap;margin:18px 2px 0;font-size:12px;color:var(--muted);}
+  .legend b{color:var(--text);font-weight:600;}
+  .sw{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:7px;vertical-align:-1px;}
+
+  .note{margin-top:22px;border-top:1px solid var(--line-soft);padding-top:16px;color:var(--muted);font-size:12.5px;line-height:1.75;}
+  .note b{color:var(--text);}
+  code{background:var(--slot);border:1px solid var(--line-soft);border-radius:5px;padding:1px 6px;font:12px var(--mono);color:var(--cyan);}
+
+  @media (max-width:560px){ h1{font-size:22px;} .field input{width:100%;} }
+  @media (prefers-reduced-motion:reduce){ *{animation:none!important;} .pipe.fire::after{display:none;} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="rail">
+    <div class="mark"><span class="glyph"></span>KAFKA · LESSON 02</div>
+    <div class="status"><i></i> Broker-accurate murmur2</div>
+  </div>
+
+  <div class="eyebrow">Producing · partitioning</div>
+  <h1>Which partition does a record land in — and <span class="t">why that one?</span></h1>
+  <p class="lede">Every keyed record's home is decided by one deterministic computation — the same murmur2
+    hash the real broker runs. Trace it here, then watch records snap into a partition's next offset.</p>
+
+  <!-- signature: the routing pipeline -->
+  <div class="pipe" id="pipe">
+    <div class="flow">
+      <div class="stage"><span class="lab">key</span><span class="val" id="s-key">"user-1"</span></div>
+      <div class="conn">→</div>
+      <div class="stage"><span class="lab">murmur2</span><span class="val" id="s-hash">—</span></div>
+      <div class="conn">→</div>
+      <div class="stage"><span class="lab">&amp; 0x7fffffff</span><span class="val" id="s-pos">—</span></div>
+      <div class="conn">→</div>
+      <div class="stage"><span class="lab">% partitions</span><span class="val" id="s-mod">% 3</span></div>
+      <div class="conn">→</div>
+      <div class="stage dest" id="s-dest"><span class="lab">lands in</span><span class="val" id="s-part">—</span></div>
+    </div>
+  </div>
+
+  <div class="deck">
+    <div class="field">
+      <label for="keyInput">message key</label>
+      <input id="keyInput" type="text" value="user-1" spellcheck="false" autocomplete="off" />
+    </div>
+    <button class="key" id="appendKeyed">Route keyed record</button>
+    <button class="nul" id="appendNull">Route with no key</button>
+    <div class="field" style="margin-left:auto">
+      <label>partitions</label>
+      <div class="seg" id="seg">
+        <button data-n="3" class="active">3</button>
+        <button data-n="4">4</button>
+        <button data-n="6">6</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="row2">
+    <button id="streamKeyed">▶ Replay user-A's session (5 keyed events)</button>
+    <button id="streamNull">▶ Fire 6 keyless events</button>
+    <button id="rotate">↻ New producer batch</button>
+    <span class="spacer"></span>
+    <button id="reset">Clear log</button>
+  </div>
+
+  <div class="warn" id="warn"></div>
+
+  <div class="tapes" id="tapes"></div>
+
+  <div class="legend">
+    <span><span class="sw" style="background:var(--cyan)"></span><b>keyed</b> — pinned by <code>hash % N</code></span>
+    <span><span class="sw" style="background:var(--violet)"></span><b>keyless</b> — sticky partitioner</span>
+    <span><span class="sw" style="background:var(--amber)"></span><b>repartition</b> — routing changed</span>
+  </div>
+
+  <div class="note">
+    <b>Read each tape top-to-bottom.</b> Offsets only climb — that strict per-partition order is the
+    <b>only</b> ordering Kafka guarantees; across tapes there is none. A <b>key</b> nails every record with
+    that key to one tape, so <code>user-A</code>'s login→checkout→pay stay in order. <b>No key</b> lets the
+    sticky partitioner fill one tape per producer batch, then move on — even spread, no cross-tape order.
+    Now switch <b>partitions</b> 3→4→6 and re-route the same key: it jumps tapes. That's why <b>growing a
+    topic's partition count re-homes keys and breaks their in-flight order</b> — Kafka makes you do it on purpose.
+  </div>
+</div>
+
+<script>
+// Kafka's org.apache.kafka.common.utils.Utils.murmur2 — verified equal to the broker's routing.
+function murmur2(bytes){
+  const seed=0x9747b28c, m=0x5bd1e995, r=24;
+  const length=bytes.length; let h=seed^length;
+  const length4=Math.floor(length/4);
+  for(let i=0;i<length4;i++){
+    const i4=i*4;
+    let k=(bytes[i4]&0xff)|((bytes[i4+1]&0xff)<<8)|((bytes[i4+2]&0xff)<<16)|((bytes[i4+3]&0xff)<<24);
+    k=Math.imul(k,m); k^=k>>>r; k=Math.imul(k,m);
+    h=Math.imul(h,m); h^=k;
+  }
+  const rem=length%4, base=length&~3;
+  if(rem===3) h^=(bytes[base+2]&0xff)<<16;
+  if(rem>=2) h^=(bytes[base+1]&0xff)<<8;
+  if(rem>=1){ h^=(bytes[base]&0xff); h=Math.imul(h,m); }
+  h^=h>>>13; h=Math.imul(h,m); h^=h>>>15;
+  return h;
+}
+const toPositive = n => n & 0x7fffffff;
+const enc = new TextEncoder();
+const partOf = (key,n)=> toPositive(murmur2(enc.encode(key))) % n;
+
+let N=3, logs=[], sticky=0;
+const VALS=["placed $42","placed $17","cancelled","placed $88","refunded","placed $9","placed $120","address changed"];
+let vi=0; const nextVal=()=>VALS[(vi++)%VALS.length];
+
+const $=id=>document.getElementById(id);
+const tapes=$("tapes"), pipe=$("pipe"), warn=$("warn");
+const esc=s=>String(s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+
+function rebuild(){ logs=Array.from({length:N},()=>[]); sticky=0;
+  tapes.style.gridTemplateColumns=`repeat(${N},minmax(150px,1fr))`; $("s-mod").textContent=`% ${N}`; render(); }
+function render(){
+  tapes.innerHTML="";
+  for(let p=0;p<N;p++){
+    const recs=logs[p].map((r,i)=>`<div class="rec"><span class="off">${String(i).padStart(2,"0")}</span>
+      <span class="pl"><span class="kk ${r.key===null?'n':''}">${r.key===null?'∅ null':esc(r.key)}</span>
+      <span class="vv">${esc(r.val)}</span></span></div>`).join("");
+    const t=document.createElement("div"); t.className="tape"; t.id="t"+p;
+    t.innerHTML=`<div class="tape-head"><span class="p">partition <b>${p}</b></span>
+      <span class="stk ${p===sticky?'on':''}">sticky</span>
+      <span class="cnt">${logs[p].length}</span></div>
+      <div class="body">${recs||'<div class="empty">— empty —</div>'}</div>`;
+    tapes.appendChild(t);
+  }
+}
+function land(p,keyless){
+  const t=$("t"+p); if(!t) return;
+  t.classList.add("land"); if(keyless)t.classList.add("keyless");
+  setTimeout(()=>t.classList.remove("land","keyless"),520);
+  t.querySelector(".body").scrollTop=1e6;
+}
+function fire(keyless){
+  pipe.classList.remove("fire","keyless"); void pipe.offsetWidth;
+  pipe.classList.add("fire"); if(keyless)pipe.classList.add("keyless");
+  const dest=$("s-dest"); dest.classList.remove("lit"); void dest.offsetWidth; dest.classList.add("lit");
+}
+function routeKeyed(key){
+  warn.classList.remove("show");
+  const h=murmur2(enc.encode(key)), pos=toPositive(h), p=pos%N;
+  pipe.classList.remove("keyless");
+  $("s-key").textContent=`"${key}"`; $("s-hash").textContent=h; $("s-pos").textContent=pos;
+  $("s-mod").textContent=`% ${N}`; $("s-part").textContent=`partition ${p}`;
+  fire(false); logs[p].push({key,val:nextVal()}); render(); land(p,false);
+}
+function routeNull(){
+  warn.classList.remove("show");
+  $("s-key").textContent="∅ null"; $("s-hash").textContent="—"; $("s-pos").textContent="—";
+  $("s-part").textContent=`partition ${sticky}`;
+  fire(true); logs[sticky].push({key:null,val:nextVal()}); render(); land(sticky,true);
+}
+function rotate(){ if(N>1){let n=sticky; while(n===sticky)n=Math.floor(Math.random()*N); sticky=n;} render(); }
+
+$("appendKeyed").onclick=()=>routeKeyed($("keyInput").value.trim()||"user-1");
+$("appendNull").onclick=routeNull;
+$("rotate").onclick=()=>{ rotate(); $("s-key").textContent="∅ null"; $("s-part").textContent=`partition ${sticky}`; pipe.classList.add("keyless"); fire(true); };
+$("reset").onclick=rebuild;
+$("keyInput").addEventListener("keydown",e=>{ if(e.key==="Enter")$("appendKeyed").click(); });
+
+$("streamKeyed").onclick=()=>{
+  const seq=["login","view item","add to cart","checkout","pay"]; let i=0;
+  const iv=setInterval(()=>{ if(i>=seq.length){clearInterval(iv);return;}
+    const p=partOf("user-A",N); pipe.classList.remove("keyless");
+    const h=murmur2(enc.encode("user-A")), pos=toPositive(h);
+    $("s-key").textContent='"user-A"'; $("s-hash").textContent=h; $("s-pos").textContent=pos;
+    $("s-mod").textContent=`% ${N}`; $("s-part").textContent=`partition ${p}`;
+    fire(false); logs[p].push({key:"user-A",val:seq[i]}); render(); land(p,false); i++;
+  },260);
+};
+$("streamNull").onclick=()=>{
+  let i=0; const iv=setInterval(()=>{ if(i>=6){clearInterval(iv);return;}
+    if(i>0&&i%3===0)rotate(); routeNull(); i++;
+  },260);
+};
+$("seg").addEventListener("click",e=>{
+  const b=e.target.closest("button[data-n]"); if(!b)return;
+  [...$("seg").children].forEach(x=>x.classList.remove("active")); b.classList.add("active");
+  const had=logs.some(l=>l.length); N=+b.dataset.n; rebuild();
+  if(had){ warn.classList.add("show");
+    warn.innerHTML=`⚠ Repartitioned to <b>${N}</b>. Every key now hashes <code>% ${N}</code>, so a key can land in a different tape than before — <b>the order between its old and new records is broken</b>. Real Kafka won't silently reshape a live topic for exactly this reason. Log cleared; re-route the same key and watch it move.`;
+  }
+});
+
+rebuild();
+</script>
+</body>
+</html>

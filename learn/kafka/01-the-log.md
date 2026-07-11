@@ -99,6 +99,29 @@ await admin.createTopics({
 await admin.disconnect();
 ```
 
+> **Do you re-run this on every app restart?** No — but you _can_, safely. A topic is
+> **cluster state, not app state**: once created it lives in the broker until you delete it,
+> so restarting your Node process doesn't touch it. And `createTopics` is a **no-op when the
+> topic already exists** — it returns `false` (not an error) and moves on. That's why the
+> "ensure topics on startup" pattern is safe to leave in: fresh broker → it creates them;
+> existing broker → it quietly does nothing. For a chat app, calling it each boot costs one
+> admin round-trip and then does nothing.
+>
+> ⚠️ **The gotcha:** `createTopics` only creates _absent_ topics — it will **not** reshape an
+> existing one. Bump `numPartitions: 3 → 6` in this code and the already-existing topic is
+> unchanged. Growing partitions is a separate, deliberate act (`admin.createPartitions`, or
+> delete + recreate) — and repartitioning **changes which partition a key routes to**, which
+> breaks per-partition ordering for in-flight keys. More in Lesson 02.
+>
+> Add **`waitForLeaders: true`** if you produce right after creating: it makes `createTopics`
+> wait until each new partition has an elected leader, closing a startup race where the first
+> `send()` outruns the topic being truly ready.
+>
+> Where does topic creation _belong_? Ensure-on-startup (this code) is great for dev and
+> small self-contained apps. In production it graduates into a separate provisioning step (a
+> one-off script / IaC) so partitions, replication, and retention are chosen consciously — the
+> same reason we turned **auto-create off** above.
+
 **Produce** — appending events to the log:
 
 ```ts

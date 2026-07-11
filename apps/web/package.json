@@ -4,8 +4,7 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
-    "serve": "vite preview",
-    "dev": "vite dev"
+    "serve": "vite preview"
   },
   "dependencies": {
     "@learn-broker/env": "workspace:*",
