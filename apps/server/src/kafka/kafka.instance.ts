@@ -19,7 +19,7 @@ async function ensureTopics() {
 
 await ensureTopics();
 
-export const producer = kafka.producer({});
+export const producer = kafka.producer({ idempotent: true });
 await producer.connect();
 
 export const chat_consumer = kafka.consumer({ groupId: KAFKA_GROUPS.chat });

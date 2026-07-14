@@ -43,3 +43,7 @@ Responsive (columns → horizontal scroll on narrow), visible `:focus-visible` o
 
 ## Built with this system
 - `02-partitioning.html` — Partition Router (key → murmur2 → % N → partition; per-partition ordering).
+- `03-consumer-groups.html` — Consumer Group Console (group = queue⊕topic; roundRobin assignment,
+  add/idle consumers, second-group fan-out, crash → rebalance → DUP/LOST by commit timing). Extends the
+  palette with `--mint` as a third *consumer channel* color (cyan/violet/mint = members C1/C2/C3);
+  amber stays hazard-only (rebalance-on-crash, DUP/LOST).

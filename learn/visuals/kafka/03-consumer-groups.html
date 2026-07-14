@@ -1,0 +1,446 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lesson 03 — Consumer Group Console · Ink &amp; Signal</title>
+<style>
+  :root{
+    --ink:#0a0e17; --ink2:#070a11;
+    --panel:#10151f; --panel2:#161c28; --slot:#1c2432;
+    --line:#232c3d; --line-soft:rgba(140,165,210,.09);
+    --text:#e8ecf4; --muted:#8b93a7; --faint:#525a6e;
+    --cyan:#3ad2ff; --cyan-dim:rgba(58,210,255,.13); --cyan-glow:rgba(58,210,255,.34);
+    --violet:#9d8cff; --violet-dim:rgba(157,140,255,.15); --violet-glow:rgba(157,140,255,.32);
+    --mint:#4fe3c1; --mint-dim:rgba(79,227,193,.13); --mint-glow:rgba(79,227,193,.30);
+    --amber:#f5a524; --amber-dim:rgba(245,165,36,.14); --amber-glow:rgba(245,165,36,.36);
+    --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;}
+  body{
+    background:
+      repeating-linear-gradient(0deg,rgba(140,165,210,.028) 0 1px,transparent 1px 7px),
+      radial-gradient(130% 90% at 50% -20%,#111826 0%,var(--ink) 58%,var(--ink2) 100%);
+    color:var(--text); font:14px/1.6 var(--sans);
+    min-height:100vh; padding:26px 22px 48px; -webkit-font-smoothing:antialiased; letter-spacing:.005em;
+  }
+  .wrap{max-width:1000px;margin:0 auto;}
+
+  /* ---- top rail ---- */
+  .rail{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;gap:12px;flex-wrap:wrap;}
+  .mark{display:flex;align-items:center;gap:11px;font:600 12px/1 var(--mono);letter-spacing:.26em;color:var(--muted);}
+  .mark .glyph{width:22px;height:22px;border:1.5px solid var(--cyan);border-radius:6px;position:relative;flex:none;}
+  .mark .glyph::before,.mark .glyph::after{content:"";position:absolute;left:3px;right:3px;height:2px;background:var(--cyan);border-radius:2px;box-shadow:0 0 6px var(--cyan-glow);}
+  .mark .glyph::before{top:6px;} .mark .glyph::after{top:12px;opacity:.5;}
+  .status{font:11px/1 var(--mono);letter-spacing:.14em;color:var(--faint);text-transform:uppercase;
+    border:1px solid var(--line);border-radius:999px;padding:7px 13px;display:inline-flex;gap:8px;align-items:center;}
+  .status i{width:6px;height:6px;border-radius:50%;background:var(--cyan);box-shadow:0 0 8px var(--cyan-glow);font-style:normal;}
+
+  /* ---- hero ---- */
+  .eyebrow{font:11px/1 var(--mono);letter-spacing:.24em;text-transform:uppercase;color:var(--cyan);margin-bottom:12px;}
+  h1{font:600 26px/1.16 var(--mono);letter-spacing:-.01em;margin:0 0 8px;}
+  h1 .t{color:var(--cyan);}
+  .lede{color:var(--muted);font-size:14px;max-width:70ch;margin:0 0 20px;}
+
+  /* ---- rebalance bar (the signature) ---- */
+  .pipe{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:13px 16px;margin-bottom:16px;position:relative;overflow:hidden;
+    display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+  .pipe::after{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(90deg,transparent,var(--cyan-glow),transparent);opacity:0;transform:translateX(-100%);}
+  .pipe.fire::after{animation:sweep .55s ease;}
+  .pipe.fire.hz::after{background:linear-gradient(90deg,transparent,var(--amber-glow),transparent);}
+  @keyframes sweep{0%{opacity:.55;transform:translateX(-100%);}100%{opacity:0;transform:translateX(100%);}}
+  .pipe .lab{font:10px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--faint);}
+  .pipe .evt{font:13px var(--mono);color:var(--muted);}
+  .pipe .evt b{color:var(--cyan);font-weight:600;}
+  .pipe .evt.hz b{color:var(--amber);}
+
+  /* ---- groups deck ---- */
+  .groups{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px;}
+  .group{flex:1;min-width:270px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;}
+  .group.analytics{border-color:rgba(157,140,255,.35);}
+  .group-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:11px;gap:8px;}
+  .gname{font:600 13px var(--mono);letter-spacing:.04em;}
+  .gname b{color:var(--cyan);} .group.analytics .gname b{color:var(--violet);}
+  .gtag{font:9px/1 var(--mono);letter-spacing:.13em;text-transform:uppercase;color:var(--faint);border:1px solid var(--line);border-radius:999px;padding:4px 8px;}
+  .consumers{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;min-height:38px;}
+  .cons{display:flex;flex-direction:column;gap:2px;border:1px solid var(--line);border-radius:10px;padding:7px 11px;background:var(--ink);position:relative;transition:.18s;}
+  .cons .cid{font:600 12px var(--mono);}
+  .cons .own{font:9px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--faint);}
+  .cons.idle{opacity:.5;border-style:dashed;}
+  .cons.idle .own{color:var(--amber);}
+  .cons.gone{opacity:0;transform:scale(.7);}
+  .empty-note{color:var(--amber);font:11px var(--mono);border:1px dashed var(--amber);border-radius:9px;padding:6px 10px;}
+  .gbtns{display:flex;gap:7px;flex-wrap:wrap;}
+
+  button{border:1px solid var(--line);background:var(--slot);color:var(--text);cursor:pointer;
+    font:600 12px var(--sans);padding:9px 13px;border-radius:9px;transition:.15s;white-space:nowrap;}
+  button:hover{border-color:var(--muted);}
+  button:focus-visible{outline:2px solid var(--cyan);outline-offset:2px;}
+  button:active{transform:translateY(1px);}
+  button.sm{padding:7px 11px;font-size:11.5px;}
+  button.cyan{background:var(--cyan-dim);border-color:rgba(58,210,255,.4);color:var(--cyan);}
+  button.violet{background:var(--violet-dim);border-color:rgba(157,140,255,.4);color:var(--violet);}
+  button.danger{background:var(--amber-dim);border-color:rgba(245,165,36,.45);color:var(--amber);}
+  button:disabled{opacity:.4;cursor:not-allowed;}
+
+  /* ---- main deck ---- */
+  .deck{display:flex;gap:9px;flex-wrap:wrap;align-items:center;margin-bottom:10px;}
+  .seg{display:inline-flex;gap:4px;background:var(--ink);border:1px solid var(--line);border-radius:10px;padding:4px;}
+  .seg button{border:0;background:transparent;padding:8px 12px;color:var(--muted);font:600 11.5px var(--mono);}
+  .seg button.active{background:var(--slot);color:var(--cyan);box-shadow:inset 0 0 0 1px var(--line);}
+  .deck .spacer{flex:1;}
+  .semantics{font:11px var(--mono);color:var(--muted);margin:0 0 16px;padding:9px 13px;border:1px solid var(--line);border-radius:10px;background:var(--panel);}
+  .semantics b{color:var(--text);}
+  .semantics .risk-al{color:var(--cyan);} .semantics .risk-am{color:var(--amber);}
+
+  /* ---- partitions: log tapes ---- */
+  .tapes{display:grid;grid-template-columns:repeat(3,minmax(200px,1fr));gap:12px;overflow-x:auto;padding-bottom:4px;}
+  .tape{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden;display:flex;flex-direction:column;min-height:230px;min-width:200px;transition:.2s;}
+  .tape.reassigned{animation:reflash .8s ease;}
+  @keyframes reflash{0%,100%{box-shadow:none;border-color:var(--line);}30%{box-shadow:0 0 24px var(--amber-dim);border-color:var(--amber);}}
+  .tape.land{box-shadow:0 0 22px var(--cyan-dim);}
+  .tape-head{padding:10px 12px;border-bottom:1px solid var(--line-soft);background:var(--panel2);}
+  .th-top{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+  .th-top .p{font:600 13px var(--mono);} .th-top .p b{color:var(--text);}
+  .owner{font:10px/1 var(--mono);letter-spacing:.06em;text-transform:uppercase;border:1px solid var(--line);border-radius:999px;padding:4px 9px;color:var(--faint);}
+  .th-sub{display:flex;align-items:center;gap:12px;margin-top:7px;font:10px/1 var(--mono);letter-spacing:.05em;color:var(--faint);text-transform:uppercase;}
+  .th-sub .cm b{color:var(--cyan);} .th-sub .an b{color:var(--violet);}
+  .body{flex:1;padding:8px;display:flex;flex-direction:column;gap:5px;overflow-y:auto;max-height:340px;}
+  .rec{display:grid;grid-template-columns:26px 1fr auto;align-items:center;gap:9px;font:12px var(--mono);
+    background:var(--ink);border:1px solid var(--line-soft);border-radius:8px;padding:6px 9px;animation:drop .3s cubic-bezier(.4,0,.2,1);position:relative;}
+  .rec .off{color:var(--faint);text-align:right;border-right:1px solid var(--line-soft);padding-right:8px;}
+  .rec .pl{display:flex;flex-direction:column;gap:1px;overflow:hidden;}
+  .rec .kk{color:var(--cyan);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .rec .kk.n{color:var(--violet);}
+  .rec .vv{color:var(--muted);font-size:10.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .rec .tag{font:8.5px/1 var(--mono);letter-spacing:.09em;text-transform:uppercase;padding:3px 6px;border-radius:999px;white-space:nowrap;}
+  .rec.done{opacity:.55;}
+  .rec.done .tag{color:var(--faint);border:1px solid var(--line);}
+  .rec.inflight{border-color:rgba(58,210,255,.4);background:linear-gradient(90deg,var(--cyan-dim),transparent);}
+  .rec.inflight .tag{color:var(--cyan);border:1px solid rgba(58,210,255,.5);}
+  .rec.pending{opacity:.5;} .rec.pending .tag{color:var(--faint);border:1px solid var(--line-soft);}
+  .rec.dup{border-color:var(--amber)!important;background:var(--amber-dim)!important;animation:buzz .5s ease;}
+  .rec.dup .tag{color:var(--amber);border:1px solid var(--amber);}
+  .rec.lost{border-color:rgba(245,165,36,.5);background:rgba(245,165,36,.06);}
+  .rec.lost .off,.rec.lost .kk,.rec.lost .vv{text-decoration:line-through;opacity:.7;}
+  .rec.lost .tag{color:var(--amber);border:1px solid var(--amber);}
+  @keyframes buzz{0%,100%{transform:none;}25%{transform:translateX(-2px);}75%{transform:translateX(2px);}}
+  .divider{display:flex;align-items:center;gap:8px;font:9px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--cyan);opacity:.85;padding:2px 4px;}
+  .divider::before,.divider::after{content:"";flex:1;height:1px;background:linear-gradient(90deg,transparent,rgba(58,210,255,.4),transparent);}
+  .empty{color:var(--faint);font:11px var(--mono);text-align:center;padding:26px 8px;opacity:.6;}
+  @keyframes drop{from{opacity:0;transform:translateY(-9px);}to{opacity:1;transform:none;}}
+
+  .legend{display:flex;gap:20px;flex-wrap:wrap;margin:18px 2px 0;font-size:12px;color:var(--muted);}
+  .legend b{color:var(--text);font-weight:600;}
+  .sw{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:7px;vertical-align:-1px;}
+
+  .note{margin-top:20px;border-top:1px solid var(--line-soft);padding-top:16px;color:var(--muted);font-size:12.5px;line-height:1.75;}
+  .note b{color:var(--text);}
+  code{background:var(--slot);border:1px solid var(--line-soft);border-radius:5px;padding:1px 6px;font:12px var(--mono);color:var(--cyan);}
+
+  @media (max-width:720px){ .tapes{grid-template-columns:1fr;} }
+  @media (max-width:560px){ h1{font-size:21px;} }
+  @media (prefers-reduced-motion:reduce){ *{animation:none!important;} .pipe.fire::after{display:none;} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="rail">
+    <div class="mark"><span class="glyph"></span>KAFKA · LESSON 03</div>
+    <div class="status"><i></i> Eager rebalance · roundRobin (KafkaJS)</div>
+  </div>
+
+  <div class="eyebrow">Consuming · groups &amp; rebalancing</div>
+  <h1>One log. Who reads which partition — <span class="t">and what happens when readers come and go?</span></h1>
+  <p class="lede">A consumer group is a <b>queue within itself</b> (partitions split across members, each record handled once)
+    and a <b>topic across groups</b> (every group gets its own full copy). Add consumers and watch the split; add a group and
+    watch it fork; crash a consumer and catch the duplicate its replacement reprocesses.</p>
+
+  <!-- signature: rebalance event bar -->
+  <div class="pipe" id="pipe">
+    <span class="lab">last event</span>
+    <span class="evt" id="evt">idle — 1 consumer owns all 3 partitions</span>
+  </div>
+
+  <!-- groups -->
+  <div class="groups" id="groups"></div>
+
+  <!-- main controls -->
+  <div class="deck">
+    <button class="cyan" id="prodKeyed">▶ Produce keyed record</button>
+    <button class="violet" id="prodNull">▶ Produce keyless</button>
+    <button id="commit">✓ Commit offsets</button>
+    <button class="danger" id="crash">✕ Crash the owner of p0</button>
+    <span class="spacer"></span>
+    <div class="seg" id="seg" title="Where the offset commit happens relative to processing">
+      <button data-mode="al" class="active">at-least-once (process→commit)</button>
+      <button data-mode="am">at-most-once (commit→process)</button>
+    </div>
+    <button id="reset">Reset</button>
+  </div>
+
+  <div class="semantics" id="sem"></div>
+
+  <div class="tapes" id="tapes"></div>
+
+  <div class="legend">
+    <span><span class="sw" style="background:var(--cyan)"></span><b>in-flight</b> — read, not yet durable (the risk zone)</span>
+    <span><span class="sw" style="background:var(--faint)"></span><b>committed</b> — durable, safe</span>
+    <span><span class="sw" style="background:var(--amber)"></span><b>DUP / LOST</b> — what a crash does to the risk zone</span>
+  </div>
+
+  <div class="note">
+    <b>Read each tape top→bottom; offsets only climb.</b> The <b>—— committed ——</b> line is group <code>chat</code>'s durable
+    bookmark (stored in <code>__consumer_offsets</code>): everything below it survives a restart. Records <b>above</b> it are
+    <b>in-flight</b> — processed by the current owner but not yet committed. <b>Crash the owner</b> and the new owner resumes from
+    the committed line: under <b>at-least-once</b> it <b>reprocesses</b> the in-flight tail → <b>DUP</b>; flip to <b>at-most-once</b>
+    (commit-first) and those records were committed but never applied → <b>LOST</b>. Add a 4th consumer to a 3-partition topic and it
+    goes <b>idle</b> — partitions, not messages, are the unit, so 3 is your ceiling. Turn on group <code>analytics</code> to watch a
+    second group hold its <b>own</b> offset on the very same log.
+  </div>
+</div>
+
+<script>
+// ---- murmur2 (Kafka-accurate, carried over from Lesson 02) ----
+function murmur2(bytes){
+  const seed=0x9747b28c,m=0x5bd1e995,r=24; const length=bytes.length; let h=seed^length;
+  const length4=Math.floor(length/4);
+  for(let i=0;i<length4;i++){ const i4=i*4;
+    let k=(bytes[i4]&0xff)|((bytes[i4+1]&0xff)<<8)|((bytes[i4+2]&0xff)<<16)|((bytes[i4+3]&0xff)<<24);
+    k=Math.imul(k,m); k^=k>>>r; k=Math.imul(k,m); h=Math.imul(h,m); h^=k; }
+  const rem=length%4, base=length&~3;
+  if(rem===3) h^=(bytes[base+2]&0xff)<<16;
+  if(rem>=2) h^=(bytes[base+1]&0xff)<<8;
+  if(rem>=1){ h^=(bytes[base]&0xff); h=Math.imul(h,m); }
+  h^=h>>>13; h=Math.imul(h,m); h^=h>>>15; return h;
+}
+const enc=new TextEncoder();
+const partOf=(key,n)=>(murmur2(enc.encode(key))&0x7fffffff)%n;
+
+// ---- state ----
+const N=3;
+const COLORS={C1:"var(--cyan)",C2:"var(--violet)",C3:"var(--mint)",C4:"var(--faint)"};
+let mode="al";                 // 'al' at-least-once | 'am' at-most-once
+let members=["C1"];            // ordered members of group 'chat'
+let analytics=false;           // second group on/off
+let log, committed, applied, lost;   // per-partition arrays for group 'chat'
+const KEYS=["room-1","room-2","user-9","order-7"]; let ki=0;
+const VALS=["hi team","shipped","paid $42","joined","typing…","file.pdf","+1","see you"]; let vi=0;
+
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+const tapes=$("tapes"), pipe=$("pipe");
+
+function reset(){
+  log=Array.from({length:N},()=>[]);
+  committed=Array(N).fill(0); applied=Array(N).fill(0);
+  lost=Array.from({length:N},()=>new Set());
+  members=["C1"]; ki=0; vi=0;
+  event("idle — 1 consumer owns all 3 partitions",false);
+  renderGroups(); render();
+}
+// roundRobin: partition p → members[p % k]; members beyond N-1 own nothing (idle)
+const ownerIdx=p=> members.length? p%members.length : -1;
+const ownerName=p=>{ const i=ownerIdx(p); return i<0?null:members[i]; };
+const isIdle=i=> i>=N;                       // more members than partitions ⇒ idle standby
+
+function event(txt,hazard){
+  const e=$("evt"); e.className="evt"+(hazard?" hz":""); e.innerHTML=txt;
+  pipe.classList.remove("fire","hz"); void pipe.offsetWidth;
+  pipe.classList.add("fire"); if(hazard) pipe.classList.add("hz");
+}
+
+// ---- render: groups ----
+function renderGroups(){
+  const g=$("groups");
+  const consChips=members.map((m,i)=>{
+    const idle=isIdle(i);
+    const owns=idle?"idle · owns ∅":`owns ${[...Array(N).keys()].filter(p=>ownerIdx(p)===i).map(p=>"p"+p).join(" ")}`;
+    return `<div class="cons" style="border-color:${idle?'var(--line)':COLORS[m]||'var(--line)'}${idle?';':''}">
+      <span class="cid" style="color:${idle?'var(--faint)':COLORS[m]||'var(--text)'}">${m}</span>
+      <span class="own">${owns}</span></div>`;
+  }).join("") || `<div class="empty-note">⚠ group empty — no members, all partitions unassigned, consumption paused</div>`;
+
+  const analyticsCard=`
+    <div class="group analytics">
+      <div class="group-head"><span class="gname">group <b>analytics</b></span>
+        <span class="gtag">${analytics?"reading — own offset":"off"}</span></div>
+      <div class="consumers">${analytics
+        ?`<div class="cons" style="border-color:var(--violet)"><span class="cid" style="color:var(--violet)">X1</span><span class="own">owns p0 p1 p2</span></div>`
+        :`<div class="empty-note" style="color:var(--faint);border-color:var(--line)">a second group would get its own full copy of the log</div>`}</div>
+      <div class="gbtns"><button class="sm ${analytics?'':'violet'}" id="toggleAnalytics">${analytics?"− remove group":"+ add group analytics"}</button></div>
+    </div>`;
+
+  g.innerHTML=`
+    <div class="group">
+      <div class="group-head"><span class="gname">group <b>chat</b></span>
+        <span class="gtag">${members.length} member${members.length!==1?"s":""} · ${Math.min(members.length,N)}/${N} partitions worked</span></div>
+      <div class="consumers">${consChips}</div>
+      <div class="gbtns">
+        <button class="sm cyan" id="addCons" ${members.length>=4?"disabled":""}>+ consumer</button>
+        <button class="sm" id="delCons" ${members.length<=1?"disabled":""}>− consumer (graceful)</button>
+      </div>
+    </div>
+    ${analyticsCard}`;
+
+  $("addCons").onclick=addConsumer;
+  $("delCons").onclick=delConsumer;
+  $("toggleAnalytics").onclick=()=>{ analytics=!analytics; event(analytics?"group <b>analytics</b> joined — forks its own copy of the log":"group <b>analytics</b> left",false); renderGroups(); render(); };
+}
+
+// ---- render: tapes ----
+function render(){
+  tapes.innerHTML="";
+  for(let p=0;p<N;p++){
+    const oi=ownerIdx(p), oname=ownerName(p);
+    const ocol=oname&&!isIdle(oi)?COLORS[oname]:"var(--faint)";
+    const lo=Math.min(committed[p],applied[p]), hi=Math.max(committed[p],applied[p]);
+    const rows=log[p].map((rec,off)=>{
+      let cls="pending", tag="unread";
+      if(lost[p].has(off)){ cls="lost"; tag="lost"; }
+      else if(off<lo){ cls="done"; tag="✓ committed"; }
+      else if(off<hi){ cls="inflight"; tag=mode==="al"?"in-flight":"not applied"; }
+      else { cls="pending"; tag=oname?"unread":"no owner"; }
+      const rowHtml=`<div class="rec ${cls}" data-p="${p}" data-off="${off}">
+        <span class="off">${String(off).padStart(2,"0")}</span>
+        <span class="pl"><span class="kk ${rec.key===null?'n':''}">${rec.key===null?'∅ null':esc(rec.key)}</span>
+          <span class="vv">${esc(rec.val)}</span></span>
+        <span class="tag">${tag}</span></div>`;
+      // committed divider sits right AFTER the last committed record
+      const divider = (off===committed[p]-1) ? `<div class="divider">committed · chat @ ${committed[p]}</div>` : "";
+      return rowHtml+divider;
+    }).join("");
+    // divider at top when nothing committed yet but records exist
+    const topDivider = (committed[p]===0 && log[p].length) ? `<div class="divider">committed · chat @ 0</div>` : "";
+
+    const anRow = analytics ? `<span class="an">analytics <b>@ ${log[p].length}</b></span>` : "";
+    const t=document.createElement("div"); t.className="tape"; t.id="t"+p;
+    t.innerHTML=`
+      <div class="tape-head">
+        <div class="th-top"><span class="p">partition <b>${p}</b></span>
+          <span class="owner" style="color:${ocol};border-color:${oname&&!isIdle(oi)?ocol:'var(--line)'}">${oname?("chat ▸ "+oname):"⚠ unassigned"}</span></div>
+        <div class="th-sub"><span class="cm">chat committed <b>@ ${committed[p]}</b></span>${anRow}<span>len ${log[p].length}</span></div>
+      </div>
+      <div class="body">${topDivider}${rows||'<div class="empty">— empty —</div>'}</div>`;
+    tapes.appendChild(t);
+  }
+  // keep tapes scrolled to newest
+  for(let p=0;p<N;p++){ const b=$("t"+p)?.querySelector(".body"); if(b) b.scrollTop=1e6; }
+  renderSemantics();
+}
+
+function renderSemantics(){
+  $("sem").innerHTML = mode==="al"
+    ? `<b>at-least-once</b> — the owner <b>processes</b> a record, <span class="risk-al">then</span> commits. The tail above the committed line is <b>applied but not durable</b>. A crash there ⇒ the new owner <span class="risk-am">reprocesses it → duplicate</span>. You trade <b>duplicates</b> for <b>never losing</b> a record. (KafkaJS default.)`
+    : `<b>at-most-once</b> — the owner <b>commits</b> the offset <span class="risk-al">first</span>, then processes. If it crashes before applying, the offset is already past the record ⇒ the new owner <span class="risk-am">skips it → lost</span>. You trade <b>possible loss</b> for <b>never duplicating</b>.`;
+}
+
+// ---- actions ----
+function produce(key){
+  const p = key===null ? nextKeylessPartition() : partOf(key,N);
+  const off=log[p].length;
+  log[p].push({key,val:VALS[(vi++)%VALS.length]});
+  // the current owner reads it immediately; commit ordering depends on mode
+  if(ownerName(p)){
+    if(mode==="al"){ applied[p]=off+1; }               // processed now; commit lags (manual)
+    else { committed[p]=off+1; applied[p]=off; }        // commit-first; application lags by one (in-flight)
+  }
+  render();
+  const t=$("t"+p); if(t){ t.classList.remove("land"); void t.offsetWidth; t.classList.add("land"); setTimeout(()=>t.classList.remove("land"),520); }
+  event(`produced <b>${key===null?"∅ keyless":esc(key)}</b> → partition <b>${p}</b>${ownerName(p)?" · owner "+ownerName(p)+" reads it":" · ⚠ no owner"}`,false);
+}
+let rr=0; function nextKeylessPartition(){ const p=rr%N; rr++; return p; }   // sticky-ish spread for the demo
+
+function commit(){
+  for(let p=0;p<N;p++){
+    if(mode==="al") committed[p]=applied[p]=log[p].length;   // durably commit everything processed
+    else applied[p]=committed[p];                            // "finish processing" the committed-ahead tail
+  }
+  event(mode==="al"?"committed — in-flight tail is now durable, safe from crashes":"caught up — application reached the committed offset",false);
+  render();
+}
+
+function addConsumer(){
+  if(members.length>=4) return;
+  const id="C"+(members.length+1); members.push(id);
+  const idle=isIdle(members.length-1);
+  event(`↻ rebalance — <b>${id}</b> joined · roundRobin reassigns partitions${idle?` · <b>${id}</b> is idle (only ${N} partitions)`:""}`, false);
+  flashReassign(); renderGroups(); render();
+}
+function delConsumer(){
+  if(members.length<=1) return;
+  const gone=members[members.length-1];
+  // graceful leave: it commits first, so no dup/loss on its partitions
+  for(let p=0;p<N;p++) if(ownerName(p)===gone){ committed[p]=applied[p]=Math.max(committed[p],applied[p]); }
+  members.pop();
+  event(`↻ rebalance — <b>${gone}</b> left gracefully (committed first) · partitions reassigned, no duplicates`, false);
+  flashReassign(); renderGroups(); render();
+}
+
+function crash(){
+  const victim=ownerName(0);                 // owner of p0 (deterministic, easy to watch)
+  if(!victim){ event("⚠ no owner to crash — add a consumer first", true); return; }
+  const owned=[...Array(N).keys()].filter(p=>ownerName(p)===victim);
+  // remove the victim abruptly (no commit) → its in-flight tail is at risk
+  const wasSingle=members.length===1;
+  members=members.filter(m=>m!==victim);
+  // re-key members so names stay C1..Ck contiguous? keep as-is; reassign by roundRobin of remaining
+  let hazardTxt;
+  if(members.length===0){
+    hazardTxt=`✕ <b>${victim}</b> crashed — group now empty, its partitions have <b>no owner</b> (paused). Add a consumer to trigger reassignment & reprocessing.`;
+  } else {
+    // was there anything in flight on the victim's partitions BEFORE we resolve it?
+    const hadRisk=owned.some(p=>committed[p]!==applied[p]);
+    // for each partition the victim owned, the NEW owner resumes from committed
+    owned.forEach(p=>{
+      const lo=Math.min(committed[p],applied[p]), hi=Math.max(committed[p],applied[p]);
+      if(mode==="al"){
+        // in-flight [committed, applied) gets reprocessed by new owner → DUP, then committed catches up
+        for(let o=lo;o<hi;o++) flashRec(p,o,"dup");
+        committed[p]=applied[p];              // new owner reprocesses & commits
+      } else {
+        // committed-ahead [applied, committed) was never applied → LOST (new owner skips it)
+        for(let o=lo;o<hi;o++){ lost[p].add(o); flashRec(p,o,"lost"); }
+        applied[p]=committed[p];
+      }
+    });
+    const any=hadRisk;
+    hazardTxt = mode==="al"
+      ? `✕ <b>${victim}</b> crashed mid-flight — new owner resumes from the committed line and <b>reprocesses</b> the in-flight tail → <b>DUPLICATES</b>${any?"":" (none in flight — produce first, then crash)"}`
+      : `✕ <b>${victim}</b> crashed — it had <b>committed ahead</b>; the new owner skips those records → <b>LOST</b>${any?"":" (nothing committed-ahead — produce first, then crash)"}`;
+  }
+  event(hazardTxt, true);
+  flashReassign(); renderGroups(); render();
+}
+
+function flashReassign(){ for(let p=0;p<N;p++){ const t=$("t"+p); if(t){ t.classList.remove("reassigned"); void t.offsetWidth; t.classList.add("reassigned"); } } }
+function flashRec(p,off,kind){
+  // applied after render; use a microtask to find the node
+  setTimeout(()=>{ const el=tapes.querySelector(`.rec[data-p="${p}"][data-off="${off}"]`); if(el){ el.classList.add(kind); if(kind==="dup") setTimeout(()=>el.classList.remove("dup"),1400); } },30);
+}
+
+// ---- wire up ----
+$("prodKeyed").onclick=()=>produce(KEYS[(ki++)%KEYS.length]);
+$("prodNull").onclick=()=>produce(null);
+$("commit").onclick=commit;
+$("crash").onclick=crash;
+$("reset").onclick=reset;
+$("seg").addEventListener("click",e=>{
+  const b=e.target.closest("button[data-mode]"); if(!b) return;
+  [...$("seg").children].forEach(x=>x.classList.remove("active")); b.classList.add("active");
+  mode=b.dataset.mode;
+  // reconcile markers so the current log stays coherent under the new rule
+  for(let p=0;p<N;p++){ const end=log[p].length;
+    if(mode==="al"){ committed[p]=Math.min(committed[p],applied[p]); }
+    else { applied[p]=Math.min(applied[p],committed[p]); }
+  }
+  event(`delivery semantics → <b>${mode==="al"?"at-least-once":"at-most-once"}</b>`,false);
+  render();
+});
+
+reset();
+</script>
+</body>
+</html>
