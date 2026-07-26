@@ -1,3 +1,6 @@
-const message = "📙 Emojipedia — 😃 Home of Emoji Meanings 💁👌🎍😍";
+import z from "zod";
 
-console.log(Buffer.from(message));
+const parseMessage = z.object({
+  is_failed: z.boolean(),
+  value: z.string(),
+});
