@@ -14,6 +14,22 @@ async function ensureTopics() {
     topics: [
       { topic: KAFKA_TOPICS["chat.messages"], numPartitions: 3 },
       { topic: KAFKA_TOPICS["chat.processed"], numPartitions: 3 },
+      {
+        topic: KAFKA_TOPICS["chat.profiles-new"],
+        numPartitions: 3,
+        configEntries: [
+          {
+            name: "cleanup.policy",
+            value: "compact",
+          },
+          // For testing
+          { name: "segment.ms", value: "100" }, // roll almost immediately (default: 7 days)
+          { name: "min.cleanable.dirty.ratio", value: "0.01" }, // clean eagerly (default: 0.5)
+          { name: "min.compaction.lag.ms", value: "0" },
+          { name: "max.compaction.lag.ms", value: "1000" }, // force a clean even if not dirty
+          { name: "delete.retention.ms", value: "100" }, // drop tombstones fast (default: 24h)
+        ],
+      },
     ],
     waitForLeaders: true,
   });

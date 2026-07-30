@@ -47,3 +47,10 @@ Responsive (columns → horizontal scroll on narrow), visible `:focus-visible` o
   add/idle consumers, second-group fan-out, crash → rebalance → DUP/LOST by commit timing). Extends the
   palette with `--mint` as a third *consumer channel* color (cyan/violet/mint = members C1/C2/C3);
   amber stays hazard-only (rebalance-on-crash, DUP/LOST).
+- `05-compaction.html` — Log Cleaner Bench (partition drawn as real segment files; append keyed
+  records, roll a segment, run the cleaner; offsets go sparse but never renumber while the
+  materialized table stays invariant). Reuses cyan/violet/mint as *record key* channels (u1/u2/u3);
+  amber = hazard (the active segment's "never cleaned" badge, tombstones, expired delete markers).
+  New motif: the **offset gap divider** (`.gap`) — a dashed rule reading "N offset(s) removed — not
+  renumbered", which is the whole point of the lesson made visible.
+  Its state machine is verified against a real broker capture (see `05-retention-compaction.md` §1.5).

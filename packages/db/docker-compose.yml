@@ -56,6 +56,14 @@ services:
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
       # topics must be created explicitly (so you learn partitions on purpose)
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      # Persist the log. WITHOUT this, log.dir falls back to Kafka's built-in default
+      # (/tmp/kafka-logs) which lives in the container's writable layer — so `docker compose
+      # down` would destroy every topic, while postgres/redis survived on their volumes.
+      KAFKA_LOG_DIRS: "/var/lib/kafka/data"
+      # Pinned so that if the volume is ever wiped, the re-format reuses the same cluster id.
+      CLUSTER_ID: "5L6g3nShT-eMCtK--X86sw"
+    volumes:
+      - learn-broker_kafka_data:/var/lib/kafka/data
     healthcheck:
       test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1 || exit 1"]
       interval: 10s
@@ -79,3 +87,4 @@ services:
 volumes:
   learn-broker_postgres_data:
   learn-broker_redis_data:
+  learn-broker_kafka_data:

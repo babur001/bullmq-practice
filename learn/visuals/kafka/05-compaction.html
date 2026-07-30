@@ -1,0 +1,503 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lesson 05 — Log Cleaner Bench · Ink &amp; Signal</title>
+<style>
+  :root{
+    --ink:#0a0e17; --ink2:#070a11;
+    --panel:#10151f; --panel2:#161c28; --slot:#1c2432;
+    --line:#232c3d; --line-soft:rgba(140,165,210,.09);
+    --text:#e8ecf4; --muted:#8b93a7; --faint:#525a6e;
+    --cyan:#3ad2ff; --cyan-dim:rgba(58,210,255,.13); --cyan-glow:rgba(58,210,255,.34);
+    --violet:#9d8cff; --violet-dim:rgba(157,140,255,.15); --violet-glow:rgba(157,140,255,.32);
+    --mint:#4fe3c1; --mint-dim:rgba(79,227,193,.13); --mint-glow:rgba(79,227,193,.30);
+    --amber:#f5a524; --amber-dim:rgba(245,165,36,.14); --amber-glow:rgba(245,165,36,.36);
+    --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;}
+  body{
+    background:
+      repeating-linear-gradient(0deg,rgba(140,165,210,.028) 0 1px,transparent 1px 7px),
+      radial-gradient(130% 90% at 50% -20%,#111826 0%,var(--ink) 58%,var(--ink2) 100%);
+    color:var(--text); font:14px/1.6 var(--sans);
+    min-height:100vh; padding:26px 22px 48px; -webkit-font-smoothing:antialiased; letter-spacing:.005em;
+  }
+  .wrap{max-width:1080px;margin:0 auto;}
+
+  /* ---- top rail ---- */
+  .rail{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;gap:12px;flex-wrap:wrap;}
+  .mark{display:flex;align-items:center;gap:11px;font:600 12px/1 var(--mono);letter-spacing:.26em;color:var(--muted);}
+  .mark .glyph{width:22px;height:22px;border:1.5px solid var(--cyan);border-radius:6px;position:relative;flex:none;}
+  .mark .glyph::before,.mark .glyph::after{content:"";position:absolute;left:3px;right:3px;height:2px;background:var(--cyan);border-radius:2px;box-shadow:0 0 6px var(--cyan-glow);}
+  .mark .glyph::before{top:6px;} .mark .glyph::after{top:12px;opacity:.5;}
+  .status{font:11px/1 var(--mono);letter-spacing:.14em;color:var(--faint);text-transform:uppercase;
+    border:1px solid var(--line);border-radius:999px;padding:7px 13px;display:inline-flex;gap:8px;align-items:center;}
+  .status i{width:6px;height:6px;border-radius:50%;background:var(--cyan);box-shadow:0 0 8px var(--cyan-glow);font-style:normal;}
+
+  /* ---- hero ---- */
+  .eyebrow{font:11px/1 var(--mono);letter-spacing:.24em;text-transform:uppercase;color:var(--cyan);margin-bottom:12px;}
+  h1{font:600 26px/1.16 var(--mono);letter-spacing:-.01em;margin:0 0 8px;}
+  h1 .t{color:var(--cyan);}
+  .lede{color:var(--muted);font-size:14px;max-width:74ch;margin:0 0 20px;}
+
+  /* ---- signal path (the signature) ---- */
+  .pipe{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:13px 16px;margin-bottom:14px;position:relative;overflow:hidden;
+    display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+  .pipe::after{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(90deg,transparent,var(--cyan-glow),transparent);opacity:0;transform:translateX(-100%);}
+  .pipe.fire::after{animation:sweep .55s ease;}
+  .pipe.fire.hz::after{background:linear-gradient(90deg,transparent,var(--amber-glow),transparent);}
+  @keyframes sweep{0%{opacity:.55;transform:translateX(-100%);}100%{opacity:0;transform:translateX(100%);}}
+  .pipe .lab{font:10px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--faint);flex:none;}
+  .pipe .evt{font:13px var(--mono);color:var(--muted);}
+  .pipe .evt b{color:var(--cyan);font-weight:600;}
+  .pipe .evt.hz b{color:var(--amber);}
+
+  /* ---- policy switch + clock ---- */
+  .strip{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px;}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:13px 15px;}
+  .card .ttl{font:10px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--faint);margin-bottom:10px;}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;}
+  .seg button{border:0;border-radius:0;background:transparent;font:600 12px var(--mono);padding:8px 13px;color:var(--muted);}
+  .seg button+button{border-left:1px solid var(--line);}
+  .seg button.on{background:var(--cyan-dim);color:var(--cyan);}
+  .clockface{font:600 20px var(--mono);color:var(--text);}
+  .clockface span{font-size:12px;color:var(--faint);}
+  .cfg{font:11px/1.75 var(--mono);color:var(--faint);}
+  .cfg b{color:var(--muted);font-weight:500;}
+
+  /* ---- controls ---- */
+  .ctl{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px;}
+  .chips{display:inline-flex;gap:6px;padding:4px;border:1px solid var(--line);border-radius:11px;background:var(--panel);}
+  .chip{border:1px solid transparent;background:transparent;color:var(--muted);font:600 12px var(--mono);padding:6px 11px;border-radius:8px;cursor:pointer;transition:.15s;}
+  .chip.on[data-k="u1"]{background:var(--cyan-dim);color:var(--cyan);border-color:rgba(58,210,255,.35);}
+  .chip.on[data-k="u2"]{background:var(--violet-dim);color:var(--violet);border-color:rgba(157,140,255,.35);}
+  .chip.on[data-k="u3"]{background:var(--mint-dim);color:var(--mint);border-color:rgba(79,227,193,.35);}
+  .sep{width:1px;align-self:stretch;background:var(--line);margin:0 4px;}
+  button{border:1px solid var(--line);background:var(--slot);color:var(--text);cursor:pointer;
+    font:600 12px var(--sans);padding:9px 13px;border-radius:9px;transition:.15s;white-space:nowrap;}
+  button:hover:not(:disabled){border-color:var(--muted);}
+  button:disabled{opacity:.38;cursor:not-allowed;}
+  button:focus-visible{outline:2px solid var(--cyan);outline-offset:2px;}
+  button.go{background:var(--cyan-dim);border-color:rgba(58,210,255,.4);color:var(--cyan);}
+  button.hz{background:var(--amber-dim);border-color:rgba(245,165,36,.4);color:var(--amber);}
+
+  /* ---- bench ---- */
+  .bench{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap;}
+  .tape{flex:1 1 480px;min-width:340px;}
+  .side{flex:1 1 280px;min-width:265px;display:flex;flex-direction:column;gap:12px;}
+
+  .seghead{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;flex-wrap:wrap;}
+  .segname{font:600 12px var(--mono);color:var(--muted);letter-spacing:.04em;}
+  .segname b{color:var(--text);}
+  .tag{font:9px/1 var(--mono);letter-spacing:.13em;text-transform:uppercase;color:var(--faint);border:1px solid var(--line);border-radius:999px;padding:4px 8px;}
+  .tag.act{color:var(--amber);border-color:rgba(245,165,36,.45);background:var(--amber-dim);}
+  .tag.cln{color:var(--cyan);border-color:rgba(58,210,255,.4);}
+
+  .segbox{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:13px;margin-bottom:11px;position:relative;overflow:hidden;}
+  .segbox.active{border-style:dashed;border-color:rgba(245,165,36,.42);}
+  .segbox.sweep::after{content:"";position:absolute;inset:0;pointer-events:none;
+    background:linear-gradient(90deg,transparent,var(--cyan-glow),transparent);opacity:0;transform:translateX(-100%);animation:sweep .6s ease;}
+
+  .rec{display:flex;align-items:center;gap:0;border:1px solid var(--line);border-radius:9px;background:var(--ink);
+    margin-bottom:5px;overflow:hidden;transition:.2s;}
+  .rec .off{font:11px var(--mono);color:var(--faint);padding:8px 10px;border-right:1px solid var(--line);min-width:52px;text-align:right;flex:none;letter-spacing:.04em;}
+  .rec .key{font:600 12px var(--mono);padding:8px 11px;flex:none;min-width:56px;}
+  .rec .val{font:12px var(--mono);color:var(--muted);padding:8px 11px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .rec[data-k="u1"] .key{color:var(--cyan);} .rec[data-k="u1"]{border-left:2px solid var(--cyan);}
+  .rec[data-k="u2"] .key{color:var(--violet);} .rec[data-k="u2"]{border-left:2px solid var(--violet);}
+  .rec[data-k="u3"] .key{color:var(--mint);} .rec[data-k="u3"]{border-left:2px solid var(--mint);}
+  .rec.tomb{border-left-color:var(--amber)!important;background:rgba(245,165,36,.05);}
+  .rec.tomb .val{color:var(--amber);font-style:italic;}
+  .rec.new{animation:land .5s ease;}
+  @keyframes land{0%{transform:translateX(-8px);opacity:0;box-shadow:0 0 0 1px var(--cyan-glow);}100%{transform:none;opacity:1;}}
+
+  .gap{display:flex;align-items:center;gap:9px;padding:3px 0 6px 52px;font:10px var(--mono);color:var(--faint);letter-spacing:.1em;text-transform:uppercase;}
+  .gap::before{content:"";width:14px;border-top:1px dashed var(--line);}
+  .gap b{color:var(--amber);font-weight:600;}
+  .segempty{font:11px var(--mono);color:var(--faint);padding:6px 2px;font-style:italic;}
+
+  /* ---- table panel ---- */
+  .row{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid var(--line);border-radius:9px;background:var(--ink);padding:8px 11px;margin-bottom:5px;}
+  .row .k{font:600 12px var(--mono);} .row .v{font:12px var(--mono);color:var(--muted);}
+  .row[data-k="u1"] .k{color:var(--cyan);} .row[data-k="u2"] .k{color:var(--violet);} .row[data-k="u3"] .k{color:var(--mint);}
+  .none{font:11px var(--mono);color:var(--faint);font-style:italic;padding:4px 2px;}
+  .verdict{border-radius:10px;padding:9px 12px;font:11px/1.6 var(--mono);border:1px solid;}
+  .verdict.ok{color:var(--mint);border-color:rgba(79,227,193,.35);background:var(--mint-dim);}
+  .verdict.warn{color:var(--amber);border-color:rgba(245,165,36,.4);background:var(--amber-dim);}
+  .stat{display:flex;justify-content:space-between;font:11px var(--mono);color:var(--faint);padding:3px 0;}
+  .stat b{color:var(--text);font-weight:600;}
+
+  .note{margin-top:18px;background:var(--panel2);border:1px solid var(--line);border-left:2px solid var(--cyan);
+    border-radius:0 12px 12px 0;padding:14px 17px;color:var(--muted);font-size:13px;line-height:1.72;}
+  .note b{color:var(--text);} .note code{font:12px var(--mono);color:var(--cyan);}
+  .note ol{margin:9px 0 0;padding-left:20px;} .note li{margin-bottom:5px;}
+
+  @media (max-width:700px){ body{padding:18px 13px 40px;} h1{font-size:21px;} }
+  @media (prefers-reduced-motion:reduce){ *{animation:none!important;} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="rail">
+    <div class="mark"><span class="glyph"></span>INK &amp; SIGNAL</div>
+    <div class="status"><i></i>LESSON 05 · LOG CLEANER</div>
+  </div>
+
+  <div class="eyebrow">Retention &amp; log compaction</div>
+  <h1>Log Cleaner <span class="t">Bench</span></h1>
+  <p class="lede">
+    One partition, drawn as its real segment files. Append keyed records, roll a segment, and run the
+    cleaner. Watch two things: offsets go <b>sparse but never renumber</b>, and the materialized table
+    on the right <b>never changes</b> — that invariant is what makes compaction safe.
+  </p>
+
+  <div class="pipe" id="pipe">
+    <span class="lab">Cleaner log</span>
+    <span class="evt" id="evt">Idle. Append a few records, roll the segment, then run the cleaner.</span>
+  </div>
+
+  <div class="strip">
+    <div class="card" style="flex:1 1 300px">
+      <div class="ttl">cleanup.policy</div>
+      <div class="seg" id="policy">
+        <button data-p="delete">delete</button>
+        <button data-p="compact" class="on">compact</button>
+        <button data-p="compact,delete">compact,delete</button>
+      </div>
+    </div>
+    <div class="card" style="flex:0 1 150px">
+      <div class="ttl">Broker clock</div>
+      <div class="clockface" id="clock">0<span>s</span></div>
+    </div>
+    <div class="card" style="flex:1 1 220px">
+      <div class="ttl">Topic config</div>
+      <div class="cfg">
+        retention.ms&nbsp;=&nbsp;<b>90s</b><br>
+        delete.retention.ms&nbsp;=&nbsp;<b>60s</b>
+      </div>
+    </div>
+  </div>
+
+  <div class="ctl">
+    <div class="chips" id="keys">
+      <button class="chip on" data-k="u1">u1</button>
+      <button class="chip" data-k="u2">u2</button>
+      <button class="chip" data-k="u3">u3</button>
+    </div>
+    <button class="go" id="bAppend">Append update</button>
+    <button class="hz" id="bTomb">Append tombstone (null)</button>
+    <span class="sep"></span>
+    <button id="bRoll">Roll segment</button>
+    <button class="go" id="bClean">Run log cleaner</button>
+    <button id="bTick">Advance clock +30s</button>
+    <button id="bReset">Reset</button>
+  </div>
+
+  <div class="bench">
+    <div class="tape" id="tape"></div>
+    <div class="side">
+      <div class="card">
+        <div class="ttl">Materialized table — replay surviving log</div>
+        <div id="table"></div>
+      </div>
+      <div id="verdict"></div>
+      <div class="card">
+        <div class="ttl">Counters</div>
+        <div class="stat"><span>records appended</span><b id="sAll">0</b></div>
+        <div class="stat"><span>records on disk</span><b id="sLive">0</b></div>
+        <div class="stat"><span>removed by cleaner</span><b id="sGone">0</b></div>
+        <div class="stat"><span>next offset</span><b id="sNext">0</b></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="note">
+    <b>Three things to make happen here:</b>
+    <ol>
+      <li>Append <code>u1</code> four times, <b>roll</b>, then <b>run the cleaner</b>. Offsets 0–2 vanish;
+        the log now starts at 3. Nothing was renumbered — <b>an offset is a permanent address.</b></li>
+      <li>Now append <code>u1</code> twice more <i>without</i> rolling, and clean again. <b>u1 still appears
+        twice.</b> The active segment is never cleaned — which is why every consumer must apply
+        last-write-wins anyway. <b>Compaction is not deduplication.</b></li>
+      <li>Tombstone <code>u2</code>, roll, clean — the tombstone survives. Now advance the clock past
+        <code>delete.retention.ms</code> and clean again: it disappears, and the panel warns you.
+        Any consumer offline during that window never learns <code>u2</code> was deleted, and keeps a
+        <b>ghost</b> forever.</li>
+    </ol>
+    Switch the policy to <code>delete</code> and the cleaner stops caring about keys entirely — it drops
+    whole segments by age. Same log, completely different question being asked of it.
+  </div>
+
+</div>
+
+<script>
+"use strict";
+
+const RETENTION = 90;        // retention.ms, in simulated seconds
+const DELETE_RETENTION = 60; // delete.retention.ms
+const KEYS = ["u1", "u2", "u3"];
+
+let policy, nextOffset, segments, clock, versions, appended, removed, selKey, tombExpired;
+
+function reset() {
+  policy = "compact";
+  nextOffset = 0;
+  clock = 0;
+  appended = 0;
+  removed = 0;
+  selKey = "u1";
+  tombExpired = [];
+  versions = { u1: 0, u2: 0, u3: 0 };
+  segments = [{ base: 0, closed: false, recs: [] }];
+  document.querySelectorAll("#policy button").forEach(b => b.classList.toggle("on", b.dataset.p === policy));
+  document.querySelectorAll(".chip").forEach(b => b.classList.toggle("on", b.dataset.k === selKey));
+}
+
+const active = () => segments[segments.length - 1];
+const allRecs = () => segments.flatMap(s => s.recs);
+
+function say(msg, hazard) {
+  const evt = document.getElementById("evt"), pipe = document.getElementById("pipe");
+  evt.innerHTML = msg;
+  evt.classList.toggle("hz", !!hazard);
+  pipe.classList.remove("fire", "hz");
+  void pipe.offsetWidth;
+  pipe.classList.add("fire");
+  if (hazard) pipe.classList.add("hz");
+}
+
+/* ---------- actions ---------- */
+
+function append(key, isTomb) {
+  const rec = { off: nextOffset++, key, tomb: !!isTomb, born: clock, fresh: true };
+  if (isTomb) {
+    rec.value = null;
+  } else {
+    versions[key] += 1;
+    rec.value = "v" + versions[key];
+  }
+  active().recs.push(rec);
+  appended++;
+  say(isTomb
+    ? `append <b>offset ${rec.off}</b> · key <b>${key}</b> · value <b>null</b> — tombstone`
+    : `append <b>offset ${rec.off}</b> · key <b>${key}</b> · value <b>${rec.value}</b>`, isTomb);
+  render();
+}
+
+function roll() {
+  if (active().recs.length === 0) { say("nothing to roll — the active segment is empty", true); return; }
+  active().closed = true;
+  segments.push({ base: nextOffset, closed: false, recs: [] });
+  say(`segment.ms tripped → segment <b>${pad(active().base)}</b> is now active; the previous one is closed and cleanable`);
+  render();
+}
+
+function clean() {
+  const before = allRecs().length;
+  const notes = [];
+  tombExpired = [];
+
+  // ── policy: delete — drop whole CLOSED segments whose newest record is older than retention.ms
+  if (policy.includes("delete")) {
+    const keep = [];
+    let droppedSegs = 0, droppedRecs = 0;
+    segments.forEach(s => {
+      if (!s.closed || s.recs.length === 0) { keep.push(s); return; }
+      const newest = Math.max(...s.recs.map(r => r.born));
+      if (clock - newest > RETENTION) { droppedSegs++; droppedRecs += s.recs.length; }
+      else keep.push(s);
+    });
+    segments = keep;
+    if (droppedSegs) notes.push(`retention dropped <b>${droppedSegs} whole segment(s)</b> (${droppedRecs} records)`);
+  }
+
+  // ── policy: compact — within CLOSED segments only, keep the highest offset per key
+  if (policy.includes("compact")) {
+    const closed = segments.filter(s => s.closed);
+    const latest = new Map();
+    closed.forEach(s => s.recs.forEach(r => {
+      if (!latest.has(r.key) || r.off > latest.get(r.key)) latest.set(r.key, r.off);
+    }));
+
+    let sup = 0, tombs = 0;
+    closed.forEach(s => {
+      s.recs = s.recs.filter(r => {
+        if (r.off < latest.get(r.key)) { sup++; return false; }        // superseded by a later write
+        if (r.tomb) {
+          if (r.horizon === undefined) { r.horizon = clock; return true; } // start the grace period
+          if (clock - r.horizon >= DELETE_RETENTION) {                  // grace expired → drop the marker
+            tombs++; tombExpired.push(r.key); return false;
+          }
+        }
+        return true;
+      });
+    });
+    if (sup) notes.push(`compaction removed <b>${sup} superseded record(s)</b>`);
+    if (tombs) notes.push(`<b>${tombs} tombstone(s)</b> passed delete.retention.ms and were removed`);
+  }
+
+  removed += before - allRecs().length;
+
+  const skipped = active().recs.length;
+  if (notes.length === 0) {
+    say(`cleaner pass · nothing to remove — ${skipped} record(s) sit in the <b>active segment</b>, which is never cleaned`, true);
+  } else {
+    say(`cleaner pass · ${notes.join(" · ")}`, tombExpired.length > 0);
+  }
+  render(); // rebuild the tape first — then sweep the elements that actually exist now
+  document.querySelectorAll(".segbox:not(.active)").forEach(el => {
+    el.classList.remove("sweep"); void el.offsetWidth; el.classList.add("sweep");
+  });
+}
+
+function tick() {
+  clock += 30;
+  say(`clock → <b>${clock}s</b> — records age; run the cleaner to act on it`);
+  render();
+}
+
+/* ---------- render ---------- */
+
+const pad = n => String(n).padStart(4, "0");
+
+function render() {
+  document.getElementById("clock").innerHTML = clock + "<span>s</span>";
+
+  // ---- the tape: segments as real files ----
+  const tape = document.getElementById("tape");
+  tape.innerHTML = "";
+
+  segments.forEach((s, i) => {
+    const box = document.createElement("div");
+    box.className = "segbox" + (s.closed ? "" : " active");
+
+    const head = document.createElement("div");
+    head.className = "seghead";
+    head.innerHTML =
+      `<span class="segname">${pad(s.base)}<b>.log</b></span>` +
+      (s.closed
+        ? `<span class="tag cln">closed · cleanable</span>`
+        : `<span class="tag act">active · never cleaned</span>`);
+    box.appendChild(head);
+
+    if (s.recs.length === 0) {
+      const e = document.createElement("div");
+      e.className = "segempty";
+      e.textContent = s.closed ? "all records removed by the cleaner" : "empty — append something";
+      box.appendChild(e);
+    }
+
+    // this segment's offset range ends where the next one begins (or at the log head)
+    const segEnd = (i + 1 < segments.length) ? segments[i + 1].base : nextOffset;
+
+    const gapEl = n => {
+      const g = document.createElement("div");
+      g.className = "gap";
+      g.innerHTML = `<b>${n}</b>&nbsp;offset(s) removed — not renumbered`;
+      return g;
+    };
+
+    // expected offset walks forward; a jump means the cleaner removed records here
+    let expect = s.base;
+    s.recs.forEach(r => {
+      if (r.off > expect) box.appendChild(gapEl(r.off - expect));
+      expect = r.off + 1;
+
+      const el = document.createElement("div");
+      el.className = "rec" + (r.tomb ? " tomb" : "") + (r.fresh ? " new" : "");
+      el.dataset.k = r.key;
+      el.innerHTML =
+        `<span class="off">${r.off}</span>` +
+        `<span class="key">${r.key}</span>` +
+        `<span class="val">${r.tomb ? "null · tombstone" + (r.horizon !== undefined ? " · expires " + (r.horizon + DELETE_RETENTION) + "s" : "") : r.value}</span>`;
+      box.appendChild(el);
+      r.fresh = false;
+    });
+
+    // records cleaned off the TAIL of this segment leave a gap too
+    if (s.recs.length && expect < segEnd) box.appendChild(gapEl(segEnd - expect));
+
+    tape.appendChild(box);
+  });
+
+  // ---- materialized table: replay the SURVIVING log, last-write-wins ----
+  const table = new Map();
+  allRecs().sort((a, b) => a.off - b.off).forEach(r => {
+    if (r.tomb) table.delete(r.key); else table.set(r.key, r.value);
+  });
+
+  const tEl = document.getElementById("table");
+  tEl.innerHTML = "";
+  if (table.size === 0) {
+    tEl.innerHTML = `<div class="none">empty — no keys survive replay</div>`;
+  } else {
+    KEYS.filter(k => table.has(k)).forEach(k => {
+      const row = document.createElement("div");
+      row.className = "row";
+      row.dataset.k = k;
+      row.innerHTML = `<span class="k">${k}</span><span class="v">${table.get(k)}</span>`;
+      tEl.appendChild(row);
+    });
+  }
+
+  // ---- verdict ----
+  const v = document.getElementById("verdict");
+  if (tombExpired.length) {
+    v.className = "verdict warn";
+    v.innerHTML = `⚠ tombstone for <b>${[...new Set(tombExpired)].join(", ")}</b> is gone.<br>` +
+      `A fresh replay is still correct — but a consumer that was offline never saw the delete and now caches a <b>ghost</b> forever.`;
+  } else if (policy === "delete") {
+    v.className = "verdict warn";
+    v.innerHTML = `policy <b>delete</b>: the cleaner ignores keys entirely and ages out whole segments. ` +
+      `This table is just "the last value I happened to still have" — <b>not</b> guaranteed current state.`;
+  } else {
+    v.className = "verdict ok";
+    v.innerHTML = `✓ replay of the surviving log = current state of every key.<br>` +
+      `Guarantee #4 — this holds no matter how many times the cleaner runs.`;
+  }
+
+  document.getElementById("sAll").textContent = appended;
+  document.getElementById("sLive").textContent = allRecs().length;
+  document.getElementById("sGone").textContent = removed;
+  document.getElementById("sNext").textContent = nextOffset;
+}
+
+/* ---------- wiring ---------- */
+
+document.getElementById("keys").addEventListener("click", e => {
+  const b = e.target.closest(".chip"); if (!b) return;
+  selKey = b.dataset.k;
+  document.querySelectorAll(".chip").forEach(c => c.classList.toggle("on", c === b));
+});
+
+document.getElementById("policy").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  policy = b.dataset.p;
+  document.querySelectorAll("#policy button").forEach(x => x.classList.toggle("on", x === b));
+  say(`cleanup.policy = <b>${policy}</b>` + (policy === "delete"
+    ? " — the cleaner now asks \"how old?\", not \"superseded?\""
+    : policy === "compact"
+      ? " — the cleaner now asks \"superseded?\", not \"how old?\""
+      : " — both: dedupe by key AND age out old segments"));
+  render();
+});
+
+document.getElementById("bAppend").onclick = () => append(selKey, false);
+document.getElementById("bTomb").onclick   = () => append(selKey, true);
+document.getElementById("bRoll").onclick   = roll;
+document.getElementById("bClean").onclick  = clean;
+document.getElementById("bTick").onclick   = tick;
+document.getElementById("bReset").onclick  = () => {
+  reset(); say("bench reset — one empty active segment at offset 0"); render();
+};
+
+reset();
+render();
+</script>
+</body>
+</html>
