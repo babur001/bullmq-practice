@@ -1,5 +1,9 @@
 # Setting up the course on another computer
 
+> **Just want the teaching system, not these courses?** `learn-kit/` is the portable
+> `/learn` command plus the conventions that shape every course it produces — drop it in
+> any repo on any machine. See [`learn-kit/init.md`](learn-kit/init.md).
+
 Everything you need is in this repo — the lessons (`learn/`), the exercise code
 (`apps/server/src/`), the broker stack (`packages/db/docker-compose.yml`), and
 the Claude course memory (`.claude/memory/`).
